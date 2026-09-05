@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAdminToken, getAdminTokenFromCookie } from '@/lib/admin-auth';
+import { verifyAdminToken, getAdminTokenFromRequest } from '@/lib/admin-auth';
 import { sendInvitationEmail } from '@/lib/email';
 import jwt from 'jsonwebtoken';
 
@@ -13,8 +13,7 @@ export async function POST(request: Request) {
     }
 
     // Verify admin token
-    const cookieHeader = request.headers.get('cookie');
-    const adminToken = getAdminTokenFromCookie(cookieHeader);
+    const adminToken = getAdminTokenFromRequest(request);
     if (!adminToken || !verifyAdminToken(adminToken)) {
       return NextResponse.json({ error: 'Forbidden. Admin authentication required.' }, { status: 403 });
     }

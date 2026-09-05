@@ -7,9 +7,14 @@ export async function POST(request: Request) {
 
     const adminName = process.env.ADMIN_NAME || 'admin';
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const adminEmail = process.env.ADMIN_EMAIL || '';
 
-    // identifier can be the admin name or email
-    const isValidName = identifier?.toLowerCase() === adminName.toLowerCase();
+    // identifier can be the admin name, 'admin', or admin email
+    const cleanId = (identifier || '').trim().toLowerCase();
+    const isValidName =
+      cleanId === adminName.toLowerCase() ||
+      cleanId === 'admin' ||
+      (Boolean(adminEmail) && cleanId === adminEmail.toLowerCase());
     const isValidPassword = password === adminPassword;
 
     if (!isValidName || !isValidPassword) {
@@ -21,10 +26,13 @@ export async function POST(request: Request) {
 
     const token = signAdminToken();
 
-    const response = NextResponse.json({ success: true, name: adminName });
+    // Check if the connection is HTTPS
+    const isHttps = request.headers.get('x-forwarded-proto') === 'https' || request.url.startsWith('https://');
+
+    const response = NextResponse.json({ success: true, name: adminName, token });
     response.cookies.set('admin_token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: isHttps,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24, // 24 hours
       path: '/',

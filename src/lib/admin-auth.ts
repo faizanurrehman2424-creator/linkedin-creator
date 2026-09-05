@@ -25,3 +25,20 @@ export function getAdminTokenFromCookie(cookieHeader: string | null): string | n
   const match = cookieHeader.match(/admin_token=([^;]+)/);
   return match ? match[1] : null;
 }
+
+export function getAdminTokenFromRequest(request: Request): string | null {
+  // 1. Check Authorization Bearer header
+  const authHeader = request.headers.get('authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.substring(7).trim();
+  }
+
+  // 2. Check Cookie header
+  const cookieHeader = request.headers.get('cookie');
+  if (cookieHeader) {
+    const match = cookieHeader.match(/admin_token=([^;]+)/);
+    if (match) return match[1].trim();
+  }
+
+  return null;
+}

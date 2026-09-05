@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAdminToken, getAdminTokenFromCookie } from '@/lib/admin-auth';
+import { verifyAdminToken, getAdminTokenFromRequest } from '@/lib/admin-auth';
 
 export async function GET(request: Request) {
   try {
-    const cookieHeader = request.headers.get('cookie');
-    const token = getAdminTokenFromCookie(cookieHeader);
+    const token = getAdminTokenFromRequest(request);
     if (!token || !verifyAdminToken(token)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

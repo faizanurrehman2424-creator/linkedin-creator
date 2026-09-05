@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { verifyAdminToken, getAdminTokenFromCookie } from '@/lib/admin-auth';
+import { verifyAdminToken, getAdminTokenFromRequest } from '@/lib/admin-auth';
 import { sendPasswordResetEmail } from '@/lib/email';
 import jwt from 'jsonwebtoken';
 
 export async function GET(request: Request) {
   try {
-    const cookieHeader = request.headers.get('cookie');
-    const token = getAdminTokenFromCookie(cookieHeader);
+    const token = getAdminTokenFromRequest(request);
     if (!token || !verifyAdminToken(token)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -19,22 +18,32 @@ export async function GET(request: Request) {
 
     const { data, error } = await supabase
       .from('password_reset_requests')
-      .select('*, profiles(full_name)')
-      .order('created_at', { ascending: false })
-      .limit(20);
+      .select(`
+        id,
+        user_id,
+        email,
+        status,
+        created_at,
+        resolved_at,
+        profiles (
+          full_name,
+          role
+        )
+      `)
+      .order('created_at', { ascending: false });
 
     if (error) throw error;
 
     return NextResponse.json({ requests: data || [] });
   } catch (error: any) {
+    console.error('Password requests error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const cookieHeader = request.headers.get('cookie');
-    const adminToken = getAdminTokenFromCookie(cookieHeader);
+    const adminToken = getAdminTokenFromRequest(request);
     if (!adminToken || !verifyAdminToken(adminToken)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

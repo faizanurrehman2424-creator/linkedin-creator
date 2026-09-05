@@ -39,13 +39,23 @@ export default function AdminDashboardPage() {
     fetchData();
   }, []);
 
+  const getAdminHeaders = (): Record<string, string> => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('admin_token');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  };
+
   const fetchData = async () => {
     setLoading(true);
     try {
+      const headers = getAdminHeaders();
       const [metricsRes, usersRes, requestsRes] = await Promise.all([
-        fetch('/api/admin/metrics'),
-        fetch('/api/admin/users'),
-        fetch('/api/admin/password-requests'),
+        fetch('/api/admin/metrics', { headers }),
+        fetch('/api/admin/users', { headers }),
+        fetch('/api/admin/password-requests', { headers }),
       ]);
 
       if (metricsRes.status === 401) {
@@ -84,7 +94,7 @@ export default function AdminDashboardPage() {
     try {
       const res = await fetch('/api/admin/update-user-flags', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminHeaders(),
         body: JSON.stringify({ userId, flags: newFlags })
       });
 
@@ -107,7 +117,7 @@ export default function AdminDashboardPage() {
     try {
       const res = await fetch('/api/admin/password-requests', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminHeaders(),
         body: JSON.stringify({ requestId, action }),
       });
 
@@ -130,7 +140,7 @@ export default function AdminDashboardPage() {
     try {
       const res = await fetch('/api/admin/create-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminHeaders(),
         body: JSON.stringify({
           email: newEmail,
           password: newPassword,
@@ -160,6 +170,9 @@ export default function AdminDashboardPage() {
   };
 
   const handleLogout = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('admin_token');
+    }
     document.cookie = 'admin_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
     router.push('/admin/login');
   };

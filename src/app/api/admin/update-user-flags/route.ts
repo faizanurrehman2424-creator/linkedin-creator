@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { verifyAdminToken, getAdminTokenFromRequest } from '@/lib/admin-auth';
 
 export async function POST(request: Request) {
   try {
@@ -9,13 +10,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing userId or flags' }, { status: 400 });
     }
 
+    const adminToken = getAdminTokenFromRequest(request);
+    const isAdmin = adminToken && verifyAdminToken(adminToken);
+
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
     const authHeader = request.headers.get('authorization');
     const isServiceKey = authHeader && authHeader.replace('Bearer ', '') === process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    if (!user && !isServiceKey) {
+    if (!isAdmin && !user && !isServiceKey) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
