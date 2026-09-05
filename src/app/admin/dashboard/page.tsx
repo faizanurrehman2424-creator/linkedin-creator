@@ -483,11 +483,23 @@ export default function AdminDashboardPage() {
                         />
                       </td>
                       <td>
-                        <ToggleSwitch
-                          checked={user.is_active ?? true}
-                          disabled={processingId === user.id}
-                          onChange={() => handleStatusToggle(user.id, !(user.is_active ?? true))}
-                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                          <span className={`status-pill ${user.is_active !== false ? 'active' : 'inactive'}`}>
+                            {user.is_active !== false ? 'Active' : 'Disabled'}
+                          </span>
+                          <button
+                            className={`btn-user-status ${user.is_active !== false ? 'btn-disable' : 'btn-enable'}`}
+                            onClick={() => handleStatusToggle(user.id, !(user.is_active ?? true))}
+                            disabled={processingId === user.id}
+                            title={user.is_active !== false ? 'Click to disable user account' : 'Click to enable user account'}
+                          >
+                            {processingId === user.id ? (
+                              <Loader2 size={12} className="spin" />
+                            ) : (
+                              user.is_active !== false ? 'Disable' : 'Enable'
+                            )}
+                          </button>
+                        </div>
                       </td>
                       <td>
                         <button className="icon-btn" onClick={() => setSelectedUser(user)} title="View Details">
@@ -528,6 +540,35 @@ export default function AdminDashboardPage() {
                 <div className="detail-row"><span>Timezone</span><span>{selectedUser.timezone || 'Asia/Karachi'}</span></div>
                 <div className="detail-row"><span>Created</span><span>{new Date(selectedUser.created_at).toLocaleDateString()}</span></div>
                 <div className="detail-row"><span>LinkedIn</span><span>{selectedUser.linkedin_connected ? 'Connected' : 'Not Connected'}</span></div>
+                <div className="detail-row">
+                  <span>Account Status</span>
+                  <span className={`status-pill ${selectedUser.is_active !== false ? 'active' : 'inactive'}`}>
+                    {selectedUser.is_active !== false ? 'Active' : 'Disabled'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="glass-card detail-card">
+                <h3>Account Access & Lifecycle</h3>
+                <p className="text-muted" style={{ fontSize: '0.825rem', lineHeight: '1.5' }}>
+                  Soft delete or disable this client workspace. When disabled, the user is immediately logged out and blocked from signing in until re-enabled.
+                </p>
+                <div style={{ marginTop: '0.75rem' }}>
+                  <button
+                    className={`btn-primary ${selectedUser.is_active !== false ? 'btn-danger-outline' : 'btn-success-outline'}`}
+                    onClick={() => handleStatusToggle(selectedUser.id, !(selectedUser.is_active ?? true))}
+                    disabled={processingId === selectedUser.id}
+                    style={{ width: '100%', justifyContent: 'center' }}
+                  >
+                    {processingId === selectedUser.id ? (
+                      <Loader2 size={16} className="spin" />
+                    ) : selectedUser.is_active !== false ? (
+                      'Disable User Account'
+                    ) : (
+                      'Re-enable User Account'
+                    )}
+                  </button>
+                </div>
               </div>
 
               <div className="glass-card detail-card">
@@ -849,6 +890,53 @@ export default function AdminDashboardPage() {
         }
         .status-pill.active { background: rgba(16, 185, 129, 0.12); color: var(--color-success); }
         .status-pill.inactive { background: rgba(239, 68, 68, 0.12); color: var(--color-danger); }
+        .btn-user-status {
+          font-size: 0.75rem;
+          font-weight: 600;
+          padding: 0.25rem 0.6rem;
+          border-radius: var(--radius-sm);
+          cursor: pointer;
+          transition: all 0.15s ease;
+          border: 1px solid transparent;
+        }
+        .btn-user-status:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+        .btn-disable {
+          background: rgba(239, 68, 68, 0.08);
+          color: var(--color-danger);
+          border-color: rgba(239, 68, 68, 0.25);
+        }
+        .btn-disable:hover:not(:disabled) {
+          background: rgba(239, 68, 68, 0.18);
+        }
+        .btn-enable {
+          background: rgba(16, 185, 129, 0.08);
+          color: var(--color-success);
+          border-color: rgba(16, 185, 129, 0.25);
+        }
+        .btn-enable:hover:not(:disabled) {
+          background: rgba(16, 185, 129, 0.18);
+        }
+        .btn-danger-outline {
+          background: rgba(239, 68, 68, 0.1);
+          color: var(--color-danger);
+          border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+        .btn-danger-outline:hover:not(:disabled) {
+          background: var(--color-danger);
+          color: #ffffff;
+        }
+        .btn-success-outline {
+          background: rgba(16, 185, 129, 0.1);
+          color: var(--color-success);
+          border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .btn-success-outline:hover:not(:disabled) {
+          background: var(--color-success);
+          color: #ffffff;
+        }
 
         /* Users Table */
         .users-table-container { overflow-x: auto; border-radius: var(--radius-lg); }

@@ -8,6 +8,8 @@ import {
   CheckCircle, Sparkles, User, Layers, Info
 } from 'lucide-react';
 
+import { useToast } from '@/components/Toast';
+
 export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [linkedinUrl, setLinkedinUrl] = useState('');
@@ -23,6 +25,7 @@ export default function OnboardingPage() {
   const [linkedinConnected, setLinkedinConnected] = useState(false);
   const router = useRouter();
   const supabase = createClient();
+  const toast = useToast();
 
   useEffect(() => {
     // Check system status for Apify scraping toggle and user LinkedIn status
@@ -92,9 +95,13 @@ export default function OnboardingPage() {
           setPillars(data.profile.core_pillars);
         }
         setScraped(true);
+        toast.success('Profile details extracted successfully.');
+      } else {
+        toast.error(data.error || 'Failed to auto-extract profile details.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Scrape error:', err);
+      toast.error('Network error during auto-extraction.');
     } finally {
       setScraping(false);
     }
@@ -109,6 +116,10 @@ export default function OnboardingPage() {
         ? `${targetAudience.trim()} | Focus Topics: ${postTopics.trim()}`
         : targetAudience.trim();
 
+      const finalHeadline = headline.trim() || 'Content Creator & Thought Leader';
+      const finalAudience = combinedAudience || 'LinkedIn Network & B2B Professionals';
+      const finalPillars = pillars.map(p => p.trim()).filter(Boolean);
+
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (session?.access_token) {
         headers['Authorization'] = `Bearer ${session.access_token}`;
@@ -118,21 +129,25 @@ export default function OnboardingPage() {
         method: 'PUT',
         headers,
         body: JSON.stringify({
-          headline: headline.trim() || null,
-          target_audience: combinedAudience || null,
+          headline: finalHeadline,
+          target_audience: finalAudience,
           tone_of_voice: toneOfVoice,
-          core_pillars: pillars.map(p => p.trim()).filter(Boolean),
+          core_pillars: finalPillars.length > 0 ? finalPillars : ['Industry Trends', 'Actionable Insights', 'Personal Growth'],
           linkedin_connected: linkedinConnected || !!linkedinUrl.trim(),
         }),
       });
 
       if (res.ok) {
-        router.push('/ideas');
-        router.refresh();
+        toast.success('Workspace setup complete. Launching Ideas Studio...');
+        window.location.href = '/ideas';
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to complete setup. Please try again.');
+        setLoading(false);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Onboarding save error:', err);
-    } finally {
+      toast.error('Network error during setup. Please try again.');
       setLoading(false);
     }
   };

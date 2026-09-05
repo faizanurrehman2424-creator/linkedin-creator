@@ -68,21 +68,27 @@ export async function GET(request: Request) {
     const status = url.searchParams.get('status') || 'fresh';
     const targetDate = url.searchParams.get('targetDate');
 
+    const month = url.searchParams.get('month');
+
     let query = adminSupabase
       .from('content_ideas')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (status.includes(',')) {
-      const statusList = status.split(',').map(s => s.trim()).filter(Boolean);
-      query = query.in('status', statusList);
-    } else {
-      query = query.eq('status', status);
+    if (status && status !== 'all') {
+      if (status.includes(',')) {
+        const statusList = status.split(',').map(s => s.trim()).filter(Boolean);
+        query = query.in('status', statusList);
+      } else {
+        query = query.eq('status', status);
+      }
     }
 
     if (targetDate && targetDate !== 'all') {
       query = query.eq('target_date', targetDate);
+    } else if (month) {
+      query = query.gte('target_date', `${month}-01`).lte('target_date', `${month}-31`);
     }
 
     const { data, error } = await query;

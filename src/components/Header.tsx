@@ -105,6 +105,20 @@ export function Header() {
     router.refresh();
   };
 
+  const [utcTime, setUtcTime] = useState<string>('');
+
+  useEffect(() => {
+    const updateUtc = () => {
+      const now = new Date();
+      const hours = String(now.getUTCHours()).padStart(2, '0');
+      const mins = String(now.getUTCMinutes()).padStart(2, '0');
+      setUtcTime(`${hours}:${mins} UTC`);
+    };
+    updateUtc();
+    const interval = setInterval(updateUtc, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   const isActive = (path: string) => pathname === path;
 
   // Don't render header on admin pages (admin has its own layout)
@@ -116,11 +130,13 @@ export function Header() {
     return (
       <header className="auth-header-minimal">
         <Link href="/login" className="brand-logo-minimal">
-          <div className="logo-icon-minimal">
-            <Lightbulb size={18} />
-          </div>
-          <strong>LinkedIn AI Engine</strong>
+          <span className="brand-text-single">LinkedIn AI Content Engine</span>
         </Link>
+        <div className="auth-header-actions">
+          <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
+            {isDark ? <Sun size={19} /> : <Moon size={19} />}
+          </button>
+        </div>
       </header>
     );
   }
@@ -159,7 +175,7 @@ export function Header() {
           {currentUser && (
             <div className="timezone-badge">
               <Clock size={14} />
-              <span>Asia/Karachi</span>
+              <span>{utcTime || 'UTC'}</span>
             </div>
           )}
 
@@ -292,30 +308,28 @@ export function Header() {
         .auth-header-minimal {
           position: fixed;
           top: 0; left: 0; right: 0;
-          padding: 1.5rem 2rem;
+          padding: 1.25rem 2rem;
           display: flex;
           align-items: center;
-          justify-content: flex-start;
+          justify-content: space-between;
           z-index: 50;
         }
         .brand-logo-minimal {
           display: flex;
           align-items: center;
-          gap: 0.6rem;
-          font-size: 1.15rem;
-          color: var(--color-text-primary);
           text-decoration: none;
-          letter-spacing: -0.02em;
+          white-space: nowrap;
         }
-        .logo-icon-minimal {
-          background: var(--color-brand);
-          color: white;
-          width: 32px; height: 32px;
-          border-radius: 8px;
+        .brand-text-single {
+          font-size: 1.15rem;
+          font-weight: 700;
+          letter-spacing: -0.025em;
+          color: var(--color-brand);
+          white-space: nowrap;
+        }
+        .auth-header-actions {
           display: flex;
           align-items: center;
-          justify-content: center;
-          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }
         .admin-access-btn {
           display: inline-flex;

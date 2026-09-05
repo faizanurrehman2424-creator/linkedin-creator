@@ -111,6 +111,21 @@ export default function IdeasPage() {
     }
   };
 
+  const parseAudienceAndTopics = (raw: string) => {
+    let audience = raw || '';
+    let topics = '';
+    if (audience.includes(' | Focus Topics: ')) {
+      const parts = audience.split(' | Focus Topics: ');
+      audience = parts[0];
+      topics = parts[1] || '';
+    } else if (audience.includes(' | Topics: ')) {
+      const parts = audience.split(' | Topics: ');
+      audience = parts[0];
+      topics = parts[1] || '';
+    }
+    return { audience, topics };
+  };
+
   const fetchProfile = async () => {
     try {
       const headers = await getAuthHeaders();
@@ -121,7 +136,9 @@ export default function IdeasPage() {
         if (profile) {
           setUserProfile(profile);
           setContextHeadline(profile.headline || '');
-          setContextAudience(profile.target_audience || '');
+          const { audience, topics } = parseAudienceAndTopics(profile.target_audience || '');
+          setContextAudience(audience);
+          setContextTopics(topics);
           setContextTone(profile.tone_of_voice || 'professional');
           if (profile.core_pillars && profile.core_pillars.length > 0) {
             setContextPillars(profile.core_pillars);
@@ -420,12 +437,26 @@ export default function IdeasPage() {
     }
   };
 
+  const handleOpenContextModal = () => {
+    if (userProfile) {
+      setContextHeadline(userProfile.headline || '');
+      const { audience, topics } = parseAudienceAndTopics(userProfile.target_audience || '');
+      setContextAudience(audience);
+      setContextTopics(topics);
+      setContextTone(userProfile.tone_of_voice || 'professional');
+      if (userProfile.core_pillars && userProfile.core_pillars.length > 0) {
+        setContextPillars(userProfile.core_pillars);
+      }
+    }
+    setShowContextModal(true);
+  };
+
   const handleSaveContext = async (e: React.FormEvent) => {
     e.preventDefault();
     setContextSaving(true);
     try {
       const combinedAudience = contextTopics.trim()
-        ? `${contextAudience.trim()} | Topics: ${contextTopics.trim()}`
+        ? `${contextAudience.trim()} | Focus Topics: ${contextTopics.trim()}`
         : contextAudience.trim();
 
       const authHeaders = await getAuthHeaders();
@@ -466,25 +497,38 @@ export default function IdeasPage() {
       const authHeaders = await getAuthHeaders();
       const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeaders };
 
+      const updates: any = {
+        hook_options: updatedIdea.hook_options,
+        selected_hook_index: updatedIdea.selected_hook_index,
+        caption_body: updatedIdea.caption_body,
+        hashtags: updatedIdea.hashtags,
+        notes: updatedIdea.notes,
+        media_url: updatedIdea.media_url,
+        media_type: updatedIdea.media_type,
+        status: updatedIdea.status,
+      };
+
+      if (updatedIdea.scheduled_at !== undefined) {
+        updates.scheduled_at = updatedIdea.scheduled_at;
+      }
+
       const res = await fetch('/api/ideas', {
         method: 'PATCH',
         headers,
         body: JSON.stringify({
           ideaId: updatedIdea.id,
-          updates: {
-            hook_options: updatedIdea.hook_options,
-            selected_hook_index: updatedIdea.selected_hook_index,
-            caption_body: updatedIdea.caption_body,
-            hashtags: updatedIdea.hashtags,
-            notes: updatedIdea.notes,
-            media_url: updatedIdea.media_url,
-            media_type: updatedIdea.media_type,
-          }
+          updates,
         }),
       });
 
       if (res.ok) {
-        setIdeas(ideas.map(i => i.id === updatedIdea.id ? { ...i, ...updatedIdea } : i));
+        if (activeTab === 'fresh' && updatedIdea.status !== 'fresh') {
+          setIdeas(prev => prev.filter(i => i.id !== updatedIdea.id));
+        } else if (activeTab === 'liked' && updatedIdea.status !== 'liked') {
+          setIdeas(prev => prev.filter(i => i.id !== updatedIdea.id));
+        } else {
+          setIdeas(prev => prev.map(i => i.id === updatedIdea.id ? { ...i, ...updatedIdea } : i));
+        }
         toast.success('Post changes saved successfully.');
       } else {
         toast.error('Failed to save post changes.');
@@ -497,9 +541,12 @@ export default function IdeasPage() {
 
   const changeDate = (delta: number) => {
     const base = selectedDate === 'all' ? getTodayStr() : selectedDate;
-    const d = new Date(base + 'T00:00:00');
-    d.setDate(d.getDate() + delta);
-    setSelectedDate(d.toISOString().split('T')[0]);
+    const [y, m, d] = base.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d + delta));
+    const year = dt.getUTCFullYear();
+    const month = String(dt.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(dt.getUTCDate()).padStart(2, '0');
+    setSelectedDate(`${year}-${month}-${day}`);
   };
 
   const getHoursLeft = (trashedAt: string | null) => {
@@ -540,7 +587,7 @@ export default function IdeasPage() {
         <button
           type="button"
           className="btn-context-edit flex-center"
-          onClick={() => setShowContextModal(true)}
+          onClick={handleOpenContextModal}
         >
           <SlidersHorizontal size={15} />
           <span>Edit Context & Pillars</span>
@@ -1230,6 +1277,8 @@ export default function IdeasPage() {
           gap: 1rem;
           transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
           position: relative;
+          min-width: 0;
+          overflow: hidden;
         }
         .idea-card:hover {
           transform: translateY(-2px);
@@ -1364,14 +1413,26 @@ export default function IdeasPage() {
           align-items: center;
           padding-top: 0.75rem;
           border-top: 1px solid var(--color-border);
+          gap: 0.5rem;
+          flex-wrap: wrap;
         }
-        .tags-preview { display: flex; gap: 0.35rem; }
+        .tags-preview {
+          display: flex;
+          gap: 0.35rem;
+          flex-wrap: wrap;
+          max-width: 60%;
+          overflow: hidden;
+        }
         .mini-tag {
           font-size: 0.7rem;
           color: var(--color-text-muted);
           background: rgba(148, 163, 184, 0.08);
           padding: 0.15rem 0.45rem;
           border-radius: var(--radius-sm);
+          white-space: nowrap;
+          text-overflow: ellipsis;
+          overflow: hidden;
+          max-width: 100px;
         }
         .open-studio-btn {
           display: flex;
@@ -1386,6 +1447,9 @@ export default function IdeasPage() {
           padding: 0.25rem 0.5rem;
           border-radius: var(--radius-sm);
           transition: 0.2s;
+          flex-shrink: 0;
+          white-space: nowrap;
+          margin-left: auto;
         }
         .open-studio-btn:hover { background: rgba(59, 130, 246, 0.08); }
 

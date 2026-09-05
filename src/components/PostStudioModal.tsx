@@ -224,19 +224,34 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
 
   const handleSave = async (newStatus?: string) => {
     setSaving(true);
-    const updatedIdea = {
+    const targetStatus = newStatus || editedIdea.status || 'fresh';
+    const updatedIdea: any = {
       ...editedIdea,
       media_url: mediaUrl || undefined,
       media_type: mediaUrl ? mediaType : 'none',
-      status: newStatus || editedIdea.status,
+      status: targetStatus,
     };
 
-    if (newStatus === 'scheduled' && scheduleDate) {
-      (updatedIdea as any).scheduled_at = `${scheduleDate}T${scheduleTime}:00`;
+    if (targetStatus === 'scheduled' && scheduleDate) {
+      updatedIdea.scheduled_at = `${scheduleDate}T${scheduleTime}:00`;
     }
 
+    setEditedIdea(updatedIdea);
     onSave(updatedIdea);
     setSaving(false);
+
+    if (targetStatus === 'liked') {
+      toast.success('Saved idea to Liked.');
+    } else if (targetStatus === 'scheduled') {
+      toast.success(`Post scheduled for ${scheduleDate} at ${scheduleTime}.`);
+    } else if (targetStatus === 'fresh' && editedIdea.status === 'liked') {
+      toast.info('Removed idea from Liked.');
+    }
+  };
+
+  const handleToggleLike = () => {
+    const nextStatus = editedIdea.status === 'liked' ? 'fresh' : 'liked';
+    handleSave(nextStatus);
   };
 
   const copyToClipboard = (text: string, type: string) => {
@@ -527,10 +542,12 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
         <div className="modal-footer">
           <div className="footer-left">
             <button
-              className="footer-btn like-btn flex-center"
-              onClick={() => handleSave('liked')}
+              className={`footer-btn like-btn flex-center ${editedIdea.status === 'liked' ? 'active-liked' : ''}`}
+              onClick={handleToggleLike}
+              title={editedIdea.status === 'liked' ? 'Remove from Liked' : 'Save to Liked'}
             >
-              <Heart size={15} /> Like
+              <Heart size={15} fill={editedIdea.status === 'liked' ? 'currentColor' : 'none'} />
+              <span>{editedIdea.status === 'liked' ? 'Liked' : 'Like'}</span>
             </button>
             <button
               className="footer-btn trash-btn flex-center"
@@ -786,6 +803,7 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
         .footer-btn { padding: 0.4rem 0.7rem; border-radius: var(--radius-md); font-size: 0.8rem; font-weight: 500; border: 1px solid var(--color-border); color: var(--color-text-secondary); background: transparent; cursor: pointer; transition: 0.2s; }
         .footer-btn:hover { color: var(--color-text-primary); }
         .like-btn:hover { color: #ec4899; border-color: #ec4899; background: rgba(236,72,153,0.08); }
+        .like-btn.active-liked { color: #ec4899; border-color: #ec4899; background: rgba(236,72,153,0.14); }
         .trash-btn:hover { color: var(--color-danger); border-color: var(--color-danger); background: rgba(239,68,68,0.08); }
         .schedule-btn:hover { color: var(--color-brand); border-color: var(--color-brand); background: rgba(59,130,246,0.08); }
         .btn-secondary { background: transparent; border: 1px solid var(--color-border); color: var(--color-text-primary); padding: 0.45rem 0.85rem; border-radius: var(--radius-md); font-weight: 500; font-size: 0.825rem; cursor: pointer; transition: 0.2s; }
