@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { createClient as createServerClient } from '@/lib/supabase/server';
+import { getMasterToggles } from '@/lib/system-settings';
 
 export async function POST(request: Request) {
   try {
-    // Check master toggle
-    if (process.env.ADMIN_APIFY_ENABLED === 'false') {
+    // Check dynamic master toggle
+    const masterToggles = await getMasterToggles();
+    if (!masterToggles.apify) {
       return NextResponse.json({ error: 'Apify scraping is currently disabled by the administrator.' }, { status: 403 });
     }
 

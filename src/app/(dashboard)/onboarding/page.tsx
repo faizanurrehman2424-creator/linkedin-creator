@@ -1,25 +1,68 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
   Linkedin, ChevronRight, ChevronLeft, Loader2,
-  CheckCircle, Sparkles, User, Layers
+  CheckCircle, Sparkles, User, Layers, Info
 } from 'lucide-react';
 
 export default function OnboardingPage() {
   const [step, setStep] = useState(1);
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [headline, setHeadline] = useState('');
+  const [postTopics, setPostTopics] = useState('');
   const [targetAudience, setTargetAudience] = useState('');
   const [toneOfVoice, setToneOfVoice] = useState('professional');
   const [pillars, setPillars] = useState(['Industry Insights', 'Professional Growth', 'Thought Leadership']);
   const [loading, setLoading] = useState(false);
   const [scraping, setScraping] = useState(false);
   const [scraped, setScraped] = useState(false);
+  const [apifyEnabled, setApifyEnabled] = useState(true);
+  const [linkedinConnected, setLinkedinConnected] = useState(false);
   const router = useRouter();
   const supabase = createClient();
+
+  useEffect(() => {
+    // Check system status for Apify scraping toggle and user LinkedIn status
+    async function init() {
+      try {
+        const [sysRes, userRes] = await Promise.all([
+          fetch('/api/system-status'),
+          supabase.auth.getUser()
+        ]);
+
+        if (sysRes.ok) {
+          const sysData = await sysRes.json();
+          if (typeof sysData.apify === 'boolean') {
+            setApifyEnabled(sysData.apify);
+          }
+        }
+
+        if (userRes.data?.user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userRes.data.user.id)
+            .maybeSingle();
+
+          if (profile) {
+            if (profile.linkedin_connected) setLinkedinConnected(true);
+            if (profile.headline) setHeadline(profile.headline);
+            if (profile.target_audience) setTargetAudience(profile.target_audience);
+            if (profile.tone_of_voice) setToneOfVoice(profile.tone_of_voice);
+            if (profile.core_pillars && profile.core_pillars.length > 0) {
+              setPillars(profile.core_pillars);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Initialization error:', err);
+      }
+    }
+    init();
+  }, []);
 
   const handleScrape = async () => {
     if (!linkedinUrl.trim()) return;
@@ -35,7 +78,9 @@ export default function OnboardingPage() {
       if (res.ok && data.profile) {
         if (data.profile.headline) setHeadline(data.profile.headline);
         if (data.profile.target_audience) setTargetAudience(data.profile.target_audience);
-        if (data.profile.core_pillars) setPillars(data.profile.core_pillars);
+        if (data.profile.core_pillars && data.profile.core_pillars.length > 0) {
+          setPillars(data.profile.core_pillars);
+        }
         setScraped(true);
       }
     } catch (err) {
@@ -51,14 +96,19 @@ export default function OnboardingPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      const combinedAudience = postTopics.trim()
+        ? `${targetAudience.trim()} | Focus Topics: ${postTopics.trim()}`
+        : targetAudience.trim();
+
       await supabase
         .from('profiles')
         .update({
-          headline,
-          target_audience: targetAudience,
+          headline: headline.trim() || null,
+          target_audience: combinedAudience || null,
           tone_of_voice: toneOfVoice,
-          core_pillars: pillars.filter(p => p.trim()),
-          linkedin_connected: !!linkedinUrl.trim(),
+          core_pillars: pillars.map(p => p.trim()).filter(Boolean),
+          linkedin_connected: linkedinConnected || !!linkedinUrl.trim(),
+          updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
 
@@ -92,34 +142,67 @@ export default function OnboardingPage() {
             <div className="step-icon linkedin-icon"><Linkedin size={28} /></div>
             <h2>Connect Your LinkedIn</h2>
             <p className="text-muted">
-              Provide your LinkedIn profile URL so we can personalize your content generation.
+              Connect your account directly or provide your profile URL to personalize your AI content voice.
             </p>
+
+            <div className="oauth-connect-box">
+              <button
+                type="button"
+                className={`btn-linkedin-oauth ${linkedinConnected ? 'connected' : ''}`}
+                onClick={() => {
+                  if (!linkedinConnected) {
+                    window.location.href = '/api/auth/linkedin/connect';
+                  }
+                }}
+              >
+                <Linkedin size={18} />
+                <span>{linkedinConnected ? 'LinkedIn Account Connected' : '1-Click Connect with LinkedIn'}</span>
+              </button>
+              {linkedinConnected && (
+                <div className="connected-badge">
+                  <CheckCircle size={14} /> Connected for direct publishing
+                </div>
+              )}
+            </div>
+
+            <div className="divider-text">
+              <span>OR USE PROFILE URL</span>
+            </div>
 
             <div className="form-group">
               <label>LinkedIn Profile URL</label>
               <input
                 type="url"
                 className="input-field"
-                placeholder="https://linkedin.com/in/your-profile"
+                placeholder="https://www.linkedin.com/in/your-username"
                 value={linkedinUrl}
                 onChange={(e) => setLinkedinUrl(e.target.value)}
               />
             </div>
 
-            <button
-              className="btn-secondary flex-center"
-              onClick={handleScrape}
-              disabled={scraping || !linkedinUrl.trim()}
-              style={{ width: '100%' }}
-            >
-              {scraping ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
-              {scraping ? 'Analyzing Profile...' : 'Auto-Fill from LinkedIn'}
-            </button>
-            {scraped && <div className="alert success"><CheckCircle size={14} /> Profile data imported successfully.</div>}
+            {apifyEnabled ? (
+              <button
+                type="button"
+                className="btn-secondary flex-center"
+                onClick={handleScrape}
+                disabled={scraping || !linkedinUrl.trim()}
+                style={{ width: '100%' }}
+              >
+                {scraping ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
+                <span>{scraping ? 'Analyzing Profile...' : 'Auto-Fill from LinkedIn'}</span>
+              </button>
+            ) : (
+              <div className="apify-disabled-box">
+                <Info size={16} />
+                <span>Profile auto-extraction is disabled by administrator. You can enter details manually in the next step.</span>
+              </div>
+            )}
 
-            <p className="text-muted" style={{ fontSize: '0.75rem', textAlign: 'center' }}>
-              You can also skip this step and enter your information manually.
-            </p>
+            {scraped && (
+              <div className="alert success">
+                <CheckCircle size={14} /> Profile details extracted successfully. Proceed to the next step.
+              </div>
+            )}
           </div>
         )}
 
@@ -127,19 +210,30 @@ export default function OnboardingPage() {
         {step === 2 && (
           <div className="step-content">
             <div className="step-icon context-icon"><User size={28} /></div>
-            <h2>Tell Us About Yourself</h2>
+            <h2>Tell Us About Your Work</h2>
             <p className="text-muted">
-              This context helps generate relevant, high-quality LinkedIn post ideas tailored to you.
+              This context helps generate tailored, high-converting LinkedIn post ideas aligned with your expertise.
             </p>
 
             <div className="form-group">
-              <label>Professional Headline</label>
+              <label>Headline & Current Role</label>
               <input
                 type="text"
                 className="input-field"
-                placeholder="e.g. Senior Recruiter at TechCorp | HR Innovation"
+                placeholder="e.g. VP of Product at ScaleUp | Building AI Infrastructure"
                 value={headline}
                 onChange={(e) => setHeadline(e.target.value)}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Topics You Post About</label>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="e.g. AI systems, engineering leadership, founder lessons, tech hiring"
+                value={postTopics}
+                onChange={(e) => setPostTopics(e.target.value)}
               />
             </div>
 
@@ -148,7 +242,7 @@ export default function OnboardingPage() {
               <input
                 type="text"
                 className="input-field"
-                placeholder="e.g. Tech professionals, HR leaders, job seekers"
+                placeholder="e.g. Tech founders, senior developers, product managers"
                 value={targetAudience}
                 onChange={(e) => setTargetAudience(e.target.value)}
               />
@@ -161,11 +255,11 @@ export default function OnboardingPage() {
                 value={toneOfVoice}
                 onChange={(e) => setToneOfVoice(e.target.value)}
               >
-                <option value="professional">Professional</option>
-                <option value="casual">Casual and Conversational</option>
-                <option value="authoritative">Authoritative and Expert</option>
-                <option value="inspirational">Inspirational and Motivational</option>
-                <option value="educational">Educational and Informative</option>
+                <option value="professional">Professional & Authoritative</option>
+                <option value="conversational">Conversational & Engaging</option>
+                <option value="inspirational">Inspirational & Visionary</option>
+                <option value="educational">Educational & Analytical</option>
+                <option value="bold">Bold & Contrarian</option>
               </select>
             </div>
           </div>
@@ -177,7 +271,7 @@ export default function OnboardingPage() {
             <div className="step-icon pillars-icon"><Layers size={28} /></div>
             <h2>Content Pillars</h2>
             <p className="text-muted">
-              Choose 3 content pillars for your daily 15 ideas (5 per pillar). You can edit these anytime.
+              Choose 3 foundational pillars for your daily 15 ideas (5 ideas per pillar). You can edit these anytime.
             </p>
 
             {pillars.map((p, i) => (
@@ -198,7 +292,7 @@ export default function OnboardingPage() {
             ))}
 
             <div className="recommended-note">
-              <strong>Recommended:</strong> Keep all 15 ideas related to your professional context for maximum engagement.
+              <strong>Tip:</strong> Tailoring all 15 ideas to your core context generates the highest engagement on LinkedIn.
             </div>
           </div>
         )}
@@ -301,8 +395,60 @@ export default function OnboardingPage() {
         .form-group { display: flex; flex-direction: column; gap: 0.4rem; text-align: left; }
         .form-group label { font-size: 0.85rem; font-weight: 500; color: var(--color-text-secondary); }
         .flex-center { display: flex; align-items: center; gap: 0.5rem; justify-content: center; }
-        .btn-secondary { background: transparent; border: 1px solid var(--color-border); color: var(--color-text-primary); padding: 0.5rem 1rem; border-radius: var(--radius-md); font-weight: 500; cursor: pointer; }
-        .btn-secondary:hover { background: rgba(148, 163, 184, 0.08); }
+        .btn-secondary { background: transparent; border: 1px solid var(--color-border); color: var(--color-text-primary); padding: 0.65rem 1rem; border-radius: var(--radius-md); font-weight: 500; cursor: pointer; transition: 0.2s; }
+        .btn-secondary:hover:not(:disabled) { background: rgba(148, 163, 184, 0.08); }
+        .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .oauth-connect-box { display: flex; flex-direction: column; gap: 0.5rem; align-items: center; }
+        .btn-linkedin-oauth {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.6rem;
+          background: #0077b5;
+          color: white;
+          border: none;
+          padding: 0.75rem 1.25rem;
+          border-radius: var(--radius-md);
+          font-weight: 600;
+          font-size: 0.9rem;
+          cursor: pointer;
+          transition: 0.2s;
+        }
+        .btn-linkedin-oauth:hover { background: #005f93; }
+        .btn-linkedin-oauth.connected { background: rgba(16, 185, 129, 0.15); color: var(--color-success); border: 1px solid rgba(16, 185, 129, 0.3); cursor: default; }
+        .connected-badge { font-size: 0.75rem; color: var(--color-success); display: flex; align-items: center; gap: 0.35rem; }
+
+        .divider-text {
+          display: flex;
+          align-items: center;
+          text-align: center;
+          color: var(--color-text-muted);
+          font-size: 0.72rem;
+          letter-spacing: 0.08em;
+          margin: 0.5rem 0;
+        }
+        .divider-text::before, .divider-text::after {
+          content: '';
+          flex: 1;
+          border-bottom: 1px solid var(--color-border);
+        }
+        .divider-text span { padding: 0 0.75rem; }
+
+        .apify-disabled-box {
+          display: flex;
+          align-items: center;
+          gap: 0.6rem;
+          background: rgba(148, 163, 184, 0.06);
+          border: 1px solid var(--color-border);
+          padding: 0.75rem 1rem;
+          border-radius: var(--radius-md);
+          font-size: 0.78rem;
+          color: var(--color-text-muted);
+          text-align: left;
+        }
+
         .alert { padding: 0.5rem 0.75rem; border-radius: var(--radius-md); font-size: 0.8rem; display: flex; align-items: center; gap: 0.5rem; justify-content: center; }
         .alert.success { background: rgba(16, 185, 129, 0.1); color: var(--color-success); border: 1px solid rgba(16, 185, 129, 0.2); }
         .recommended-note {

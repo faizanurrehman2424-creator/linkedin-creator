@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, Lock, User, Loader2, ArrowRight } from 'lucide-react';
+import { Shield, Lock, User, Loader2, ArrowRight, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
 
 export default function AdminLoginPage() {
   const [identifier, setIdentifier] = useState('');
@@ -24,7 +25,7 @@ export default function AdminLoginPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Login failed');
+      if (!res.ok) throw new Error(data.error || 'Authentication failed. Invalid admin credentials.');
 
       if (data.token) {
         localStorage.setItem('admin_token', data.token);
@@ -33,165 +34,202 @@ export default function AdminLoginPage() {
       router.push('/admin/dashboard');
       router.refresh();
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Admin authentication failed.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="admin-login-container">
-      <div className="glass-card admin-login-card">
-        <div className="admin-login-header">
-          <div className="admin-icon-wrapper">
-            <Shield size={28} />
+    <div className="admin-login-wrapper">
+      <div className="admin-glow-orb" />
+      
+      <div className="glass-card admin-auth-card">
+        <div className="admin-card-header">
+          <div className="admin-badge-icon">
+            <Shield size={26} />
           </div>
-          <h2>Administrator Access</h2>
+          <h2>Administrator Portal</h2>
           <p className="text-muted">
-            Enter your admin credentials to access the control panel.
+            Sign in with master administrator credentials to access the management control center.
           </p>
         </div>
 
-        <form onSubmit={handleLogin} className="admin-login-form">
-          {error && <div className="alert error">{error}</div>}
+        {error && <div className="alert error">{error}</div>}
 
-          <div className="input-group">
-            <User size={18} className="input-icon" />
-            <input
-              type="text"
-              placeholder="Admin name or email"
-              className="input-field with-icon"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              required
-            />
+        <form onSubmit={handleLogin} className="admin-form">
+          <div className="field-block">
+            <label>Admin Username or Email</label>
+            <div className="input-wrap">
+              <User size={17} className="input-icon" />
+              <input
+                type="text"
+                placeholder="e.g. faizan or admin@company.com"
+                className="input-field with-icon"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                required
+                autoComplete="username"
+              />
+            </div>
           </div>
 
-          <div className="input-group">
-            <Lock size={18} className="input-icon" />
-            <input
-              type="password"
-              placeholder="Admin password"
-              className="input-field with-icon"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+          <div className="field-block">
+            <label>Master Password</label>
+            <div className="input-wrap">
+              <Lock size={17} className="input-icon" />
+              <input
+                type="password"
+                placeholder="••••••••••••"
+                className="input-field with-icon"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="current-password"
+              />
+            </div>
           </div>
 
-          <button type="submit" className="btn-primary login-btn" disabled={loading}>
-            {loading ? <Loader2 size={18} className="spin" /> : 'Access Control Panel'}
-            {!loading && <ArrowRight size={18} />}
+          <button type="submit" className="btn-primary auth-submit-btn" disabled={loading}>
+            {loading ? (
+              <Loader2 size={18} className="spin" />
+            ) : (
+              'Access Control Center'
+            )}
+            {!loading && <ArrowRight size={17} />}
           </button>
         </form>
 
-        <div className="admin-login-footer">
-          <a href="/login" className="text-button text-muted">
-            Back to user login
-          </a>
+        <div className="admin-card-footer">
+          <Link href="/login" className="back-link">
+            <ArrowLeft size={15} />
+            <span>Return to Candidate Login</span>
+          </Link>
         </div>
       </div>
 
       <style jsx>{`
-        .admin-login-container {
+        .admin-login-wrapper {
+          min-height: calc(100vh - 70px);
           display: flex;
           align-items: center;
           justify-content: center;
-          min-height: 100vh;
-          padding: 1rem;
-          background: var(--color-bg);
+          padding: 2rem 1.5rem;
+          position: relative;
+          overflow: hidden;
         }
-        .admin-login-card {
+        .admin-glow-orb {
+          position: absolute;
+          width: 480px;
+          height: 480px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(37, 99, 235, 0.12) 0%, rgba(37, 99, 235, 0) 70%);
+          top: 20%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          pointer-events: none;
+        }
+        .admin-auth-card {
           width: 100%;
-          max-width: 420px;
-          padding: 2.5rem 2rem;
+          max-width: 440px;
+          padding: 2.5rem;
           display: flex;
           flex-direction: column;
-          gap: 2rem;
+          gap: 1.5rem;
+          position: relative;
+          z-index: 10;
+          animation: fadeInUp 0.4s ease-out;
         }
-        .admin-login-header {
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(16px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .admin-card-header {
           text-align: center;
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 0.5rem;
         }
-        .admin-icon-wrapper {
-          width: 56px;
-          height: 56px;
+        .admin-badge-icon {
+          width: 52px;
+          height: 52px;
           border-radius: 50%;
-          background: rgba(239, 68, 68, 0.1);
-          color: var(--color-danger);
+          background: rgba(37, 99, 235, 0.12);
+          border: 1px solid var(--color-brand-border);
+          color: var(--color-brand);
           display: flex;
           align-items: center;
           justify-content: center;
           margin-bottom: 0.5rem;
         }
-        .admin-login-header h2 {
+        .admin-card-header h2 {
           font-size: 1.5rem;
+          letter-spacing: -0.025em;
+          font-weight: 700;
           color: var(--color-text-primary);
         }
-        .text-muted {
-          color: var(--color-text-muted);
+        .admin-card-header p {
           font-size: 0.875rem;
+          line-height: 1.5;
         }
-        .admin-login-form {
+        .admin-form {
           display: flex;
           flex-direction: column;
           gap: 1.25rem;
         }
-        .input-group {
+        .field-block {
+          display: flex;
+          flex-direction: column;
+          gap: 0.4rem;
+        }
+        .field-block label {
+          font-size: 0.825rem;
+          font-weight: 600;
+          color: var(--color-text-secondary);
+        }
+        .input-wrap {
           position: relative;
           display: flex;
           align-items: center;
         }
         .input-icon {
           position: absolute;
-          left: 1rem;
+          left: 0.95rem;
           color: var(--color-text-muted);
+          pointer-events: none;
         }
         .with-icon {
-          padding-left: 2.75rem;
+          padding-left: 2.65rem;
           height: 44px;
         }
-        .login-btn {
-          height: 44px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.5rem;
+        .auth-submit-btn {
+          height: 46px;
           margin-top: 0.5rem;
+          font-size: 0.925rem;
         }
-        .alert {
-          padding: 0.75rem;
-          border-radius: var(--radius-md);
-          font-size: 0.875rem;
-          text-align: center;
-        }
-        .error {
-          background: rgba(239, 68, 68, 0.1);
-          color: var(--color-danger);
-          border: 1px solid rgba(239, 68, 68, 0.2);
-        }
-        .spin {
-          animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-          100% { transform: rotate(360deg); }
-        }
-        .admin-login-footer {
+        .admin-card-footer {
           text-align: center;
           padding-top: 1rem;
           border-top: 1px solid var(--color-border);
         }
-        .text-button {
-          font-size: 0.875rem;
-          background: none;
-          border: none;
-          cursor: pointer;
+        .back-link {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.45rem;
+          font-size: 0.825rem;
+          color: var(--color-text-secondary);
+          text-decoration: none;
+          transition: color 0.2s;
         }
-        .text-button:hover {
-          color: var(--color-text-primary);
+        .back-link:hover {
+          color: var(--color-brand);
         }
       `}</style>
     </div>

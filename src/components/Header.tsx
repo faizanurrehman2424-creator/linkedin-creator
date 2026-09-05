@@ -102,18 +102,28 @@ export function Header() {
   // Don't render header on admin pages (admin has its own layout)
   if (pathname?.startsWith('/admin')) return null;
 
-  const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname?.startsWith('/set-password');
+  const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname === '/admin/login' || pathname?.startsWith('/set-password');
 
   if (isAuthPage) {
     return (
       <header className="glass-card header-container auth-header">
-        <div className="header-content">
+        <div className="header-content auth-header-content">
           <Link href="/login" className="brand-logo">
             <strong>LinkedIn AI Engine</strong>
           </Link>
-          <div className="header-actions">
+          <div className="header-actions auth-header-actions">
+            {pathname !== '/admin/login' && (
+              <Link 
+                href="/admin/login" 
+                className="admin-access-btn" 
+                title="Administrator Access Portal"
+              >
+                <Shield size={16} />
+                <span>Admin</span>
+              </Link>
+            )}
             <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
-              {isDark ? <Sun size={19} /> : <Moon size={19} />}
+              {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
           </div>
         </div>
@@ -284,6 +294,42 @@ export function Header() {
           border-right: none;
           border-top: none;
           padding: 0.85rem 2rem;
+        }
+        .auth-header {
+          border-bottom: 1px solid var(--color-border);
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+        }
+        .auth-header-content {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          width: 100%;
+        }
+        .auth-header-actions {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+        .admin-access-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.45rem;
+          padding: 0.4rem 0.85rem;
+          font-size: 0.825rem;
+          font-weight: 600;
+          color: var(--color-text-secondary);
+          background: rgba(148, 163, 184, 0.08);
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-md);
+          transition: all 0.2s ease;
+          text-decoration: none;
+        }
+        .admin-access-btn:hover {
+          color: var(--color-brand);
+          border-color: var(--color-brand);
+          background: var(--color-brand-light);
+          transform: translateY(-1px);
         }
         .header-content {
           max-width: 1200px;

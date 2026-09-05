@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   X, Wand2, Copy, Image as ImageIcon, Video, Calendar,
   Check, Loader2, Save, Heart, Trash2, Upload, FileVideo,
@@ -45,8 +45,26 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
   const [publishingLinkedIn, setPublishingLinkedIn] = useState(false);
   const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
+  const [masterImageGen, setMasterImageGen] = useState(true);
+  const [masterVideoGen, setMasterVideoGen] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
+
+  useEffect(() => {
+    async function fetchSystemToggles() {
+      try {
+        const res = await fetch('/api/system-status');
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.image_gen === 'boolean') setMasterImageGen(data.image_gen);
+          if (typeof data.video_gen === 'boolean') setMasterVideoGen(data.video_gen);
+        }
+      } catch (err) {
+        console.error('Failed to load system toggles in Studio:', err);
+      }
+    }
+    fetchSystemToggles();
+  }, []);
 
   const handleRefine = async (field: 'hook' | 'caption_body' | 'hashtags', currentText: string) => {
     if (!refinePrompt.trim()) return;
@@ -209,8 +227,8 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
 
   const fullPostText = `${editedIdea.hook_options[editedIdea.selected_hook_index]}\n\n${editedIdea.caption_body}\n\n${editedIdea.hashtags.join(' ')}`;
 
-  const canImage = !userProfile || userProfile.can_generate_images !== false;
-  const canVideo = !userProfile || userProfile.can_generate_videos !== false;
+  const canImage = masterImageGen && (!userProfile || userProfile.can_generate_images !== false);
+  const canVideo = masterVideoGen && (!userProfile || userProfile.can_generate_videos !== false);
 
   return (
     <div className="modal-overlay">
@@ -333,12 +351,12 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
             {/* NOTES */}
             <div className="field-group">
               <div className="field-header">
-                <label>Notes</label>
+                <label>Personal Notes & Concept Angle</label>
               </div>
               <textarea
                 className="input-field"
                 rows={2}
-                placeholder="Add personal notes about this post..."
+                placeholder="Add personal thoughts, interview notes, or ideas..."
                 value={editedIdea.notes || ''}
                 onChange={(e) => setEditedIdea({ ...editedIdea, notes: e.target.value })}
               />
@@ -348,73 +366,101 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
             <div className="field-group media-studio">
               <div className="field-header">
                 <label>Media Studio</label>
-                <div className="media-tabs">
-                  <button
-                    className={`media-tab ${activeMediaTab === 'generate' ? 'active' : ''}`}
-                    onClick={() => setActiveMediaTab('generate')}
-                  >
-                    <Wand2 size={13} /> Generate
-                  </button>
-                  <button
-                    className={`media-tab ${activeMediaTab === 'upload' ? 'active' : ''}`}
-                    onClick={() => setActiveMediaTab('upload')}
-                  >
-                    <Upload size={13} /> Upload
-                  </button>
-                </div>
-              </div>
-
-              {activeMediaTab === 'generate' && (
-                <>
-                  <textarea
-                    className="input-field"
-                    rows={2}
-                    value={mediaPrompt}
-                    onChange={(e) => setMediaPrompt(e.target.value)}
-                    placeholder="Describe the visual you want to generate..."
-                  />
-                  <div className="media-gen-buttons">
+                {!mediaUrl && (
+                  <div className="media-tabs">
                     <button
-                      className="btn-primary sm flex-center media-gen-btn"
-                      onClick={handleGenerateImage}
-                      disabled={generatingMedia || !canImage}
-                      title={!canImage ? 'Image generation disabled by admin' : ''}
+                      className={`media-tab ${activeMediaTab === 'generate' ? 'active' : ''}`}
+                      onClick={() => setActiveMediaTab('generate')}
                     >
-                      {generatingMedia && mediaType !== 'video' ? <Loader2 size={14} className="spin" /> : <ImageIcon size={14} />}
-                      Generate Image
+                      <Wand2 size={13} /> Generate
                     </button>
                     <button
-                      className="btn-video sm flex-center media-gen-btn"
-                      onClick={handleGenerateVideo}
-                      disabled={generatingMedia || !canVideo}
-                      title={!canVideo ? 'Video generation disabled by admin' : ''}
+                      className={`media-tab ${activeMediaTab === 'upload' ? 'active' : ''}`}
+                      onClick={() => setActiveMediaTab('upload')}
                     >
-                      {generatingMedia && mediaType === 'video' ? <Loader2 size={14} className="spin" /> : <FileVideo size={14} />}
-                      Generate Video
+                      <Upload size={13} /> Upload
                     </button>
                   </div>
-                </>
-              )}
+                )}
+              </div>
 
-              {activeMediaTab === 'upload' && (
-                <div className="upload-area">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*,video/*"
-                    onChange={handleFileUpload}
-                    style={{ display: 'none' }}
-                  />
-                  <button
-                    className="upload-btn"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
-                  >
-                    {uploading ? <Loader2 size={20} className="spin" /> : <Upload size={20} />}
-                    <span>{uploading ? 'Uploading...' : 'Click to upload image or video'}</span>
-                    <span className="upload-hint">JPG, PNG, GIF, MP4, WebM</span>
-                  </button>
+              {mediaUrl ? (
+                <div className="attached-media-card">
+                  <div className="media-info-header">
+                    <div className="media-tag flex-center">
+                      {mediaType === 'video' ? <FileVideo size={14} /> : <ImageIcon size={14} />}
+                      <span>{mediaType === 'video' ? 'AI Video Ready' : 'AI Graphic Ready'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-discard flex-center"
+                      onClick={() => {
+                        setMediaUrl(null);
+                        toast.info('Media discarded. You can now generate or upload new media.');
+                      }}
+                    >
+                      <Trash2 size={13} /> Discard {mediaType === 'video' ? 'Video' : 'Image'}
+                    </button>
+                  </div>
+                  <p className="text-muted" style={{ fontSize: '0.78rem', margin: 0 }}>
+                    Discarding removes this asset and allows you to re-generate or upload another file.
+                  </p>
                 </div>
+              ) : (
+                <>
+                  {activeMediaTab === 'generate' && (
+                    <>
+                      <textarea
+                        className="input-field"
+                        rows={2}
+                        value={mediaPrompt}
+                        onChange={(e) => setMediaPrompt(e.target.value)}
+                        placeholder="Describe the visual or scene you want to generate..."
+                      />
+                      <div className="media-gen-buttons">
+                        <button
+                          className="btn-primary sm flex-center media-gen-btn"
+                          onClick={handleGenerateImage}
+                          disabled={generatingMedia || !canImage}
+                          title={!masterImageGen ? 'Image generation disabled globally' : !canImage ? 'Image generation disabled for your account' : ''}
+                        >
+                          {generatingMedia && mediaType !== 'video' ? <Loader2 size={14} className="spin" /> : <ImageIcon size={14} />}
+                          Generate Image
+                        </button>
+                        <button
+                          className="btn-video sm flex-center media-gen-btn"
+                          onClick={handleGenerateVideo}
+                          disabled={generatingMedia || !canVideo}
+                          title={!masterVideoGen ? 'Video generation disabled globally' : !canVideo ? 'Video generation disabled for your account' : ''}
+                        >
+                          {generatingMedia && mediaType === 'video' ? <Loader2 size={14} className="spin" /> : <FileVideo size={14} />}
+                          Generate Video
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {activeMediaTab === 'upload' && (
+                    <div className="upload-area">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*,video/*"
+                        onChange={handleFileUpload}
+                        style={{ display: 'none' }}
+                      />
+                      <button
+                        className="upload-btn"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                      >
+                        {uploading ? <Loader2 size={20} className="spin" /> : <Upload size={20} />}
+                        <span>{uploading ? 'Uploading...' : 'Click to upload image or video'}</span>
+                        <span className="upload-hint">JPG, PNG, GIF, MP4, WebM</span>
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -646,6 +692,41 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
         .btn-video { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.3); border-radius: var(--radius-md); font-weight: 500; font-size: 0.8rem; padding: 0.5rem; cursor: pointer; }
         .btn-video:hover:not(:disabled) { background: rgba(139, 92, 246, 0.25); }
         .btn-video:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .attached-media-card {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          background: rgba(148, 163, 184, 0.05);
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-md);
+          padding: 0.75rem 1rem;
+        }
+        .media-info-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .media-tag {
+          font-size: 0.75rem;
+          font-weight: 600;
+          color: var(--color-brand);
+          letter-spacing: 0.03em;
+        }
+        .btn-discard {
+          background: rgba(239, 68, 68, 0.1);
+          color: var(--color-danger);
+          border: 1px solid rgba(239, 68, 68, 0.2);
+          border-radius: var(--radius-md);
+          padding: 0.35rem 0.65rem;
+          font-size: 0.75rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: 0.2s;
+        }
+        .btn-discard:hover {
+          background: rgba(239, 68, 68, 0.2);
+        }
 
         .upload-area { margin-top: 0.5rem; }
         .upload-btn { width: 100%; padding: 1.5rem; border: 2px dashed var(--color-border); border-radius: var(--radius-md); display: flex; flex-direction: column; align-items: center; gap: 0.35rem; color: var(--color-text-secondary); background: transparent; cursor: pointer; transition: 0.2s; }

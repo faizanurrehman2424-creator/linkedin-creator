@@ -34,6 +34,13 @@ export default function AdminDashboardPage() {
   const [newIdeas, setNewIdeas] = useState(true);
   const [newImages, setNewImages] = useState(true);
   const [newVideos, setNewVideos] = useState(false);
+  const [masterToggles, setMasterToggles] = useState<any>({
+    idea_gen: true,
+    image_gen: true,
+    video_gen: true,
+    apify: true,
+  });
+  const [savingMaster, setSavingMaster] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -65,6 +72,14 @@ export default function AdminDashboardPage() {
 
       const metricsData = await metricsRes.json();
       setMetrics(metricsData);
+      if (metricsData.masterToggles) {
+        setMasterToggles({
+          idea_gen: metricsData.masterToggles.ideaGeneration ?? true,
+          image_gen: metricsData.masterToggles.imageGeneration ?? true,
+          video_gen: metricsData.masterToggles.videoGeneration ?? true,
+          apify: metricsData.masterToggles.apifyEnabled ?? true,
+        });
+      }
 
       if (usersRes.ok) {
         const usersData = await usersRes.json();
@@ -79,6 +94,29 @@ export default function AdminDashboardPage() {
       console.error('Failed to fetch admin data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleMasterToggle = async (key: string, currentValue: boolean) => {
+    const newToggles = { ...masterToggles, [key]: !currentValue };
+    setSavingMaster(true);
+    try {
+      const res = await fetch('/api/admin/master-toggles', {
+        method: 'POST',
+        headers: getAdminHeaders(),
+        body: JSON.stringify({ toggles: newToggles })
+      });
+      if (res.ok) {
+        setMasterToggles(newToggles);
+        showSuccess(`Master switch updated successfully.`);
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to update master switch');
+      }
+    } catch (err) {
+      toast.error('Network error updating switch');
+    } finally {
+      setSavingMaster(false);
     }
   };
 
@@ -295,37 +333,59 @@ export default function AdminDashboardPage() {
 
             {/* Master Toggles */}
             <div className="glass-card master-toggles-card">
-              <h3>Master Feature Toggles</h3>
-              <p className="text-muted">Global overrides that affect all users. When disabled, features appear grayed out for everyone.</p>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <div>
+                  <h3>Master Feature Toggles</h3>
+                  <p className="text-muted">Global overrides that affect all users. When disabled, features appear grayed out system-wide.</p>
+                </div>
+                {savingMaster && <Loader2 size={18} className="spin text-muted" />}
+              </div>
               <div className="toggles-grid">
                 <div className="toggle-row">
-                  <span>Idea Generation</span>
-                  <span className={`status-pill ${metrics.masterToggles.ideaGeneration ? 'active' : 'inactive'}`}>
-                    {metrics.masterToggles.ideaGeneration ? 'Enabled' : 'Disabled'}
-                  </span>
+                  <div>
+                    <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>Idea Generation</div>
+                    <div className="text-muted" style={{ fontSize: '0.8rem' }}>Allows creators to generate batches of 15 ideas.</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={masterToggles.idea_gen}
+                    disabled={savingMaster}
+                    onChange={() => handleMasterToggle('idea_gen', masterToggles.idea_gen)}
+                  />
                 </div>
                 <div className="toggle-row">
-                  <span>Image Generation</span>
-                  <span className={`status-pill ${metrics.masterToggles.imageGeneration ? 'active' : 'inactive'}`}>
-                    {metrics.masterToggles.imageGeneration ? 'Enabled' : 'Disabled'}
-                  </span>
+                  <div>
+                    <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>Image Generation</div>
+                    <div className="text-muted" style={{ fontSize: '0.8rem' }}>Allows creators to generate AI post banners and graphics.</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={masterToggles.image_gen}
+                    disabled={savingMaster}
+                    onChange={() => handleMasterToggle('image_gen', masterToggles.image_gen)}
+                  />
                 </div>
                 <div className="toggle-row">
-                  <span>Video Generation</span>
-                  <span className={`status-pill ${metrics.masterToggles.videoGeneration ? 'active' : 'inactive'}`}>
-                    {metrics.masterToggles.videoGeneration ? 'Enabled' : 'Disabled'}
-                  </span>
+                  <div>
+                    <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>Video Generation</div>
+                    <div className="text-muted" style={{ fontSize: '0.8rem' }}>Allows creators to generate AI video drafts.</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={masterToggles.video_gen}
+                    disabled={savingMaster}
+                    onChange={() => handleMasterToggle('video_gen', masterToggles.video_gen)}
+                  />
                 </div>
                 <div className="toggle-row">
-                  <span>Apify Auto-Scraping</span>
-                  <span className={`status-pill ${metrics.masterToggles.apifyEnabled ? 'active' : 'inactive'}`}>
-                    {metrics.masterToggles.apifyEnabled ? 'Enabled' : 'Disabled'}
-                  </span>
+                  <div>
+                    <div style={{ fontWeight: 600, color: 'var(--color-text-primary)' }}>Apify Auto-Scraping</div>
+                    <div className="text-muted" style={{ fontSize: '0.8rem' }}>Auto-extracts creator tone and pillar topics during onboarding.</div>
+                  </div>
+                  <ToggleSwitch
+                    checked={masterToggles.apify}
+                    disabled={savingMaster}
+                    onChange={() => handleMasterToggle('apify', masterToggles.apify)}
+                  />
                 </div>
               </div>
-              <p className="text-muted" style={{ marginTop: '0.75rem', fontSize: '0.75rem' }}>
-                Master toggles are controlled via environment variables (ADMIN_IDEA_GEN_ENABLED, etc.) in the server configuration.
-              </p>
             </div>
           </>
         )}
@@ -349,6 +409,7 @@ export default function AdminDashboardPage() {
                   <tr>
                     <th>User</th>
                     <th>Role</th>
+                    <th>Usage Metrics</th>
                     <th>Ideas</th>
                     <th>Images</th>
                     <th>Videos</th>
@@ -365,6 +426,13 @@ export default function AdminDashboardPage() {
                         </div>
                       </td>
                       <td><span className={`role-badge ${user.role}`}>{user.role?.toUpperCase()}</span></td>
+                      <td>
+                        <div className="user-metrics-chips">
+                          <span className="metric-chip ideas">{user.ideas_count || 0} ideas</span>
+                          <span className="metric-chip images">{user.images_count || 0} imgs</span>
+                          <span className="metric-chip videos">{user.videos_count || 0} vids</span>
+                        </div>
+                      </td>
                       <td>
                         <ToggleSwitch
                           checked={user.can_generate_ideas}
@@ -428,9 +496,20 @@ export default function AdminDashboardPage() {
               </div>
 
               <div className="glass-card detail-card">
+                <h3>Usage & Activity</h3>
+                <div className="detail-row"><span>Ideas Generated</span><strong>{selectedUser.ideas_count || 0}</strong></div>
+                <div className="detail-row"><span>Images Created</span><strong>{selectedUser.images_count || 0}</strong></div>
+                <div className="detail-row"><span>Videos Created</span><strong>{selectedUser.videos_count || 0}</strong></div>
+                <div className="detail-row"><span>Published Posts</span><strong>{selectedUser.published_count || 0}</strong></div>
+              </div>
+
+              <div className="glass-card detail-card">
                 <h3>Feature Permissions</h3>
                 <div className="toggle-row">
-                  <span>Idea Generation</span>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Idea Generation</div>
+                    <div className="text-muted" style={{ fontSize: '0.75rem' }}>Can generate daily batches of 15 ideas</div>
+                  </div>
                   <ToggleSwitch
                     checked={selectedUser.can_generate_ideas}
                     disabled={processingId === selectedUser.id}
@@ -438,7 +517,10 @@ export default function AdminDashboardPage() {
                   />
                 </div>
                 <div className="toggle-row">
-                  <span>Image Generation</span>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Image Generation</div>
+                    <div className="text-muted" style={{ fontSize: '0.75rem' }}>Can generate AI post graphics</div>
+                  </div>
                   <ToggleSwitch
                     checked={selectedUser.can_generate_images}
                     disabled={processingId === selectedUser.id}
@@ -446,7 +528,10 @@ export default function AdminDashboardPage() {
                   />
                 </div>
                 <div className="toggle-row">
-                  <span>Video Generation</span>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Video Generation</div>
+                    <div className="text-muted" style={{ fontSize: '0.75rem' }}>Can generate AI video drafts</div>
+                  </div>
                   <ToggleSwitch
                     checked={selectedUser.can_generate_videos}
                     disabled={processingId === selectedUser.id}
@@ -550,6 +635,9 @@ export default function AdminDashboardPage() {
                 <div className="switch-row"><span>Ideas</span><ToggleSwitch checked={newIdeas} disabled={false} onChange={() => setNewIdeas(!newIdeas)} /></div>
                 <div className="switch-row"><span>Images</span><ToggleSwitch checked={newImages} disabled={false} onChange={() => setNewImages(!newImages)} /></div>
                 <div className="switch-row"><span>Videos</span><ToggleSwitch checked={newVideos} disabled={false} onChange={() => setNewVideos(!newVideos)} /></div>
+              </div>
+              <div className="invite-note">
+                An invitation email with a secure password setup link will be automatically sent to this address upon creation.
               </div>
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowInviteModal(false)}>Cancel</button>
@@ -739,16 +827,28 @@ export default function AdminDashboardPage() {
         .role-badge.admin { background: rgba(239, 68, 68, 0.1); color: var(--color-danger); border: 1px solid rgba(239, 68, 68, 0.2); }
         .role-badge.creator { background: rgba(59, 130, 246, 0.1); color: var(--color-brand); border: 1px solid rgba(59, 130, 246, 0.2); }
         .icon-btn { padding: 0.4rem; border-radius: var(--radius-md); color: var(--color-text-secondary); transition: 0.2s; display: flex; align-items: center; justify-content: center; background: none; border: none; cursor: pointer; }
-        .icon-btn:hover { background: rgba(148, 163, 184, 0.1); color: var(--color-text-primary); }
-        .empty-state { padding: 3rem; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 0.75rem; }
+        .user-metrics-chips { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+        .metric-chip {
+          font-size: 0.72rem;
+          padding: 0.15rem 0.5rem;
+          border-radius: var(--radius-sm);
+          font-weight: 500;
+          background: rgba(148, 163, 184, 0.08);
+          color: var(--color-text-secondary);
+          border: 1px solid var(--color-border);
+        }
+        .metric-chip.ideas { color: var(--color-warning); border-color: rgba(245, 158, 11, 0.2); background: rgba(245, 158, 11, 0.06); }
+        .metric-chip.images { color: var(--color-success); border-color: rgba(16, 185, 129, 0.2); background: rgba(16, 185, 129, 0.06); }
+        .metric-chip.videos { color: #8b5cf6; border-color: rgba(139, 92, 246, 0.2); background: rgba(139, 92, 246, 0.06); }
 
         /* Detail Grid */
-        .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+        .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
         .detail-card { padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; }
         .detail-card h3 { font-size: 1.05rem; color: var(--color-text-primary); }
         .detail-row { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid var(--color-border); font-size: 0.875rem; }
         .detail-row span:first-child { color: var(--color-text-secondary); }
         .detail-row span:last-child { font-weight: 500; color: var(--color-text-primary); }
+        .invite-note { font-size: 0.8rem; color: var(--color-brand); background: rgba(59, 130, 246, 0.08); padding: 0.6rem 0.8rem; border-radius: var(--radius-md); border: 1px solid rgba(59, 130, 246, 0.2); line-height: 1.4; }
 
         /* Password Requests */
         .requests-list { display: flex; flex-direction: column; }

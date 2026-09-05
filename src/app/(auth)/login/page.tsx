@@ -12,19 +12,21 @@ import {
   Sparkles, 
   Share2, 
   Calendar, 
-  TrendingUp 
+  TrendingUp,
+  Shield 
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
 function AuthContent() {
   const searchParams = useSearchParams();
-  const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
+  const initialMode = (searchParams.get('tab') === 'admin' || searchParams.get('mode') === 'admin') ? 'admin' : 'client';
 
-  const [mode, setMode] = useState<'signin' | 'signup' | 'reset'>(initialMode);
+  const [mode, setMode] = useState<'client' | 'admin' | 'reset'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [adminIdentifier, setAdminIdentifier] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -55,27 +57,23 @@ function AuthContent() {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to request reset');
-        setMessage('Password reset request submitted. The administrator will approve and issue your link.');
-      } else if (mode === 'signup') {
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              full_name: fullName,
-            },
-          },
+        setMessage('Password reset request submitted. The administrator will review and issue your link.');
+      } else if (mode === 'admin') {
+        const res = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: adminIdentifier, password: adminPassword }),
         });
 
-        if (signUpError) throw signUpError;
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Invalid administrator credentials.');
 
-        if (data.session) {
-          router.push('/onboarding');
-          router.refresh();
-        } else {
-          setMessage('Account created successfully. Please check your inbox if email confirmation is enabled, or sign in.');
-          setMode('signin');
+        if (data.token) {
+          localStorage.setItem('admin_token', data.token);
         }
+
+        router.push('/admin/dashboard');
+        router.refresh();
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
@@ -118,59 +116,61 @@ function AuthContent() {
               <div className="author-name-row">
                 <span className="author-name">Alex Rivera</span>
                 <span className="author-dot">·</span>
-                <span className="author-badge">1st</span>
+                <span className="author-degree">1st</span>
               </div>
-              <span className="author-headline">Managing Director · Talent Advisory & Executive Search</span>
-              <span className="author-time">Just now · Automated via API</span>
+              <p className="author-headline">Founder @ ApexScale | B2B Growth Architect</p>
+              <div className="author-time">Just now · LinkedIn AI Engine</div>
             </div>
           </div>
 
-          <div className="preview-content">
-            <p className="preview-hook">
+          <div className="preview-body">
+            {/* Realtime Hook Switcher Indicator */}
+            <div className="preview-hook-switch-bar">
+              <span className="hook-switch-label">Live Hook Switcher:</span>
+              <div className="hook-buttons-group">
+                {showcaseHooks.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className={`hook-switch-pill ${activeHookIndex === i ? 'active' : ''}`}
+                    onClick={() => setActiveHookIndex(i)}
+                  >
+                    Variant {i + 1}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Active Hook Text */}
+            <p className="preview-hook-text">
               {showcaseHooks[activeHookIndex]}
             </p>
-            <p className="preview-body">
-              The shift from vanity impressions to inbound pipeline happens when your content addresses specific executive bottlenecks instead of broad platitudes.
-              <br /><br />
-              High-growth teams are no longer looking for cheerleaders on their feeds. They are looking for operators who diagnose market friction in public.
+
+            <p className="preview-body-text">
+              When we onboard executive clients, the biggest bottleneck is never ideas. It is consistency and positioning.
             </p>
-            <div className="preview-tags">
-              <span>#ExecutiveSearch</span>
-              <span>#TalentStrategy</span>
-              <span>#Leadership</span>
+
+            <div className="preview-framework-box">
+              <div className="framework-line">1. Hook with counter-intuitive data</div>
+              <div className="framework-line">2. Deliver 1 concrete operational breakdown</div>
+              <div className="framework-line">3. Conclude with a tactical discussion prompt</div>
             </div>
+
+            <p className="preview-tags">#B2BMarketing #Leadership #GrowthStrategy</p>
           </div>
 
-          {/* Interactive Hook Switcher Bar */}
-          <div className="hook-switcher">
-            <span className="hook-label">Switch AI Hook Variant:</span>
-            <div className="hook-pills">
-              {showcaseHooks.map((_, i) => (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => setActiveHookIndex(i)}
-                  className={`hook-pill ${activeHookIndex === i ? 'active' : ''}`}
-                >
-                  Variant {i + 1}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Live Metric Tickers */}
           <div className="preview-footer">
-            <div className="preview-metric">
-              <TrendingUp size={14} />
-              <span>4.8x Avg Engagement</span>
+            <div className="metric-pill">
+              <TrendingUp size={13} />
+              <span>4.8x Expected Reach</span>
             </div>
-            <div className="preview-metric">
-              <Calendar size={14} />
-              <span>15 Ideas / Day</span>
+            <div className="metric-pill">
+              <Share2 size={13} />
+              <span>1-Click Direct Publish</span>
             </div>
-            <div className="preview-metric">
-              <Share2 size={14} />
-              <span>Direct Publishing</span>
+            <div className="metric-pill">
+              <Calendar size={13} />
+              <span>Automated Schedule</span>
             </div>
           </div>
         </div>
@@ -179,40 +179,16 @@ function AuthContent() {
       {/* Right: Glassmorphic Auth Form */}
       <div className="form-column">
         <div className="glass-card auth-card">
-          {/* Mode Tabs */}
-          {mode !== 'reset' && (
-            <div className="auth-tabs">
-              <button
-                type="button"
-                className={`auth-tab ${mode === 'signin' ? 'active' : ''}`}
-                onClick={() => { setMode('signin'); setError(''); setMessage(''); }}
-              >
-                Sign In
-              </button>
-              <button
-                type="button"
-                className={`auth-tab ${mode === 'signup' ? 'active' : ''}`}
-                onClick={() => { setMode('signup'); setError(''); setMessage(''); }}
-              >
-                Create Account
-              </button>
-            </div>
-          )}
-
           <div className="auth-header-copy">
             <h2>
               {mode === 'reset' 
                 ? 'Request Password Reset' 
-                : mode === 'signup' 
-                ? 'Create Your Creator Account' 
-                : 'Welcome Back'}
+                : 'Client Workspace Login'}
             </h2>
             <p className="text-muted">
               {mode === 'reset'
                 ? 'Enter your registered email to request access.'
-                : mode === 'signup'
-                ? 'Get started with automated daily LinkedIn content generation.'
-                : 'Sign in with your email to access your workspace.'}
+                : 'Sign in with your email to access your content engine and schedule.'}
             </p>
           </div>
 
@@ -220,43 +196,52 @@ function AuthContent() {
           {message && <div className="alert success">{message}</div>}
 
           <form onSubmit={handleAuth} className="auth-form">
-            {mode === 'signup' && (
-              <div className="field-block">
-                <label>Full Name</label>
-                <div className="input-wrap">
-                  <User size={17} className="input-icon" />
-                  <input
-                    type="text"
-                    placeholder="e.g. Alex Rivera"
-                    className="input-field with-icon"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    required
-                  />
+            {mode === 'reset' ? (
+              <>
+                <div className="field-block">
+                  <label>Registered Work Email</label>
+                  <div className="input-wrap">
+                    <Mail size={17} className="input-icon" />
+                    <input
+                      type="email"
+                      placeholder="name@company.com"
+                      className="input-field with-icon"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
-              </div>
-            )}
 
-            <div className="field-block">
-              <label>Work Email</label>
-              <div className="input-wrap">
-                <Mail size={17} className="input-icon" />
-                <input
-                  type="email"
-                  placeholder="name@company.com"
-                  className="input-field with-icon"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
+                <button type="submit" className="btn-primary auth-submit-btn" disabled={loading}>
+                  {loading ? (
+                    <Loader2 size={18} className="spin" />
+                  ) : (
+                    'Submit Reset Request'
+                  )}
+                  {!loading && <ArrowRight size={17} />}
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="field-block">
+                  <label>Work Email</label>
+                  <div className="input-wrap">
+                    <Mail size={17} className="input-icon" />
+                    <input
+                      type="email"
+                      placeholder="name@company.com"
+                      className="input-field with-icon"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
 
-            {mode !== 'reset' && (
-              <div className="field-block">
-                <div className="field-label-row">
-                  <label>Password</label>
-                  {mode === 'signin' && (
+                <div className="field-block">
+                  <div className="field-label-row">
+                    <label>Password</label>
                     <button
                       type="button"
                       className="inline-link"
@@ -264,35 +249,34 @@ function AuthContent() {
                     >
                       Forgot password?
                     </button>
-                  )}
+                  </div>
+                  <div className="input-wrap">
+                    <Lock size={17} className="input-icon" />
+                    <input
+                      type="password"
+                      placeholder="••••••••••••"
+                      className="input-field with-icon"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
-                <div className="input-wrap">
-                  <Lock size={17} className="input-icon" />
-                  <input
-                    type="password"
-                    placeholder="••••••••••••"
-                    className="input-field with-icon"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    minLength={6}
-                  />
-                </div>
-              </div>
-            )}
 
-            <button type="submit" className="btn-primary auth-submit-btn" disabled={loading}>
-              {loading ? (
-                <Loader2 size={18} className="spin" />
-              ) : mode === 'reset' ? (
-                'Submit Request'
-              ) : mode === 'signup' ? (
-                'Create Account'
-              ) : (
-                'Sign In to Dashboard'
-              )}
-              {!loading && <ArrowRight size={17} />}
-            </button>
+                <button type="submit" className="btn-primary auth-submit-btn" disabled={loading}>
+                  {loading ? (
+                    <Loader2 size={18} className="spin" />
+                  ) : (
+                    'Sign In to Workspace'
+                  )}
+                  {!loading && <ArrowRight size={17} />}
+                </button>
+
+                <div className="client-access-notice">
+                  <span>Private SaaS Workspace. Client accounts are provisioned and managed by your administrator.</span>
+                </div>
+              </>
+            )}
           </form>
 
           {mode === 'reset' && (
@@ -300,9 +284,9 @@ function AuthContent() {
               <button
                 type="button"
                 className="inline-link"
-                onClick={() => { setMode('signin'); setError(''); setMessage(''); }}
+                onClick={() => { setMode('client'); setError(''); setMessage(''); }}
               >
-                Back to Sign In
+                Back to Client Sign In
               </button>
             </div>
           )}
@@ -310,6 +294,10 @@ function AuthContent() {
           <div className="auth-card-footnote">
             <CheckCircle2 size={15} className="footnote-icon" />
             <span>Encrypted with Supabase Row Level Security</span>
+            <span className="footnote-dot">·</span>
+            <Link href="/admin/login" className="footnote-admin-link">
+              Admin Access
+            </Link>
           </div>
         </div>
       </div>
@@ -591,6 +579,28 @@ function AuthContent() {
         }
         .footnote-icon {
           color: var(--color-success);
+        }
+        .footnote-dot {
+          color: var(--color-text-muted);
+          opacity: 0.5;
+        }
+        .footnote-admin-link {
+          color: var(--color-brand);
+          text-decoration: none;
+          font-weight: 500;
+        }
+        .footnote-admin-link:hover {
+          text-decoration: underline;
+        }
+        .client-access-notice {
+          padding: 0.65rem 0.85rem;
+          background: rgba(148, 163, 184, 0.05);
+          border: 1px solid var(--color-border);
+          border-radius: var(--radius-sm);
+          font-size: 0.775rem;
+          color: var(--color-text-muted);
+          line-height: 1.45;
+          text-align: center;
         }
 
         @media (max-width: 960px) {

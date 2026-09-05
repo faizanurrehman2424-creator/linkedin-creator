@@ -1,8 +1,15 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getMasterToggles } from '@/lib/system-settings';
 
 export async function POST(request: Request) {
   try {
+    // Check global master switch
+    const masterToggles = await getMasterToggles();
+    if (!masterToggles.image_gen) {
+      return NextResponse.json({ error: 'AI Image generation is temporarily disabled by administrator.' }, { status: 403 });
+    }
+
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
 

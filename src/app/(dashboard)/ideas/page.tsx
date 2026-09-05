@@ -6,12 +6,13 @@ import { PostStudioModal } from '@/components/PostStudioModal';
 import {
   Loader2, Wand2, Heart, Trash2, RotateCcw,
   ChevronLeft, ChevronRight, Calendar, Filter,
-  ArrowRight
+  ArrowRight, SlidersHorizontal, CheckSquare, Square,
+  Check, X, Clock, AlertTriangle
 } from 'lucide-react';
 import { useToast } from '@/components/Toast';
 
 const STATUS_TABS = [
-  { key: 'fresh', label: 'Fresh Ideas', icon: '/' },
+  { key: 'fresh', label: 'Fresh Ideas' },
   { key: 'liked', label: 'Liked' },
   { key: 'scheduled', label: 'Scheduled' },
   { key: 'published', label: 'Posted' },
@@ -19,6 +20,9 @@ const STATUS_TABS = [
 ];
 
 const PILLAR_COLORS: Record<string, string> = {
+  industry_trends: '#3b82f6',
+  recruiter_storytelling: '#8b5cf6',
+  educational_frameworks: '#10b981',
   industry_insights: '#3b82f6',
   thought_leadership: '#8b5cf6',
   professional_growth: '#10b981',
@@ -36,14 +40,45 @@ export default function IdeasPage() {
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedIdea, setSelectedIdea] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [masterIdeaGen, setMasterIdeaGen] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [selectedIdeaIds, setSelectedIdeaIds] = useState<string[]>([]);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+
+  // Edit Context Modal State
+  const [showContextModal, setShowContextModal] = useState(false);
+  const [contextHeadline, setContextHeadline] = useState('');
+  const [contextTopics, setContextTopics] = useState('');
+  const [contextAudience, setContextAudience] = useState('');
+  const [contextTone, setContextTone] = useState('professional');
+  const [contextPillars, setContextPillars] = useState<string[]>([
+    'Industry Trends', 'Recruiter War Stories', 'Educational Frameworks'
+  ]);
+  const [contextSaving, setContextSaving] = useState(false);
+
   const supabase = createClient();
   const toast = useToast();
 
   useEffect(() => {
     fetchIdeas();
     fetchProfile();
+    fetchSystemStatus();
+    setSelectedIdeaIds([]);
   }, [activeTab, selectedDate]);
+
+  const fetchSystemStatus = async () => {
+    try {
+      const res = await fetch('/api/system-status');
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.idea_gen === 'boolean') {
+          setMasterIdeaGen(data.idea_gen);
+        }
+      }
+    } catch (e) {
+      console.error('System status error:', e);
+    }
+  };
 
   const fetchProfile = async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -52,8 +87,17 @@ export default function IdeasPage() {
         .from('profiles')
         .select('*')
         .eq('id', user.id)
-        .single();
-      if (data) setUserProfile(data);
+        .maybeSingle();
+
+      if (data) {
+        setUserProfile(data);
+        setContextHeadline(data.headline || '');
+        setContextAudience(data.target_audience || '');
+        setContextTone(data.tone_of_voice || 'professional');
+        if (data.core_pillars && data.core_pillars.length > 0) {
+          setContextPillars(data.core_pillars);
+        }
+      }
     }
   };
 
@@ -82,6 +126,15 @@ export default function IdeasPage() {
   };
 
   const handleGenerate = async () => {
+    if (!masterIdeaGen) {
+      toast.error('Idea generation is disabled system-wide by administrator.');
+      return;
+    }
+    if (userProfile && userProfile.can_generate_ideas === false) {
+      toast.error('Idea generation is disabled for your account.');
+      return;
+    }
+
     setGenerating(true);
     try {
       const res = await fetch('/api/ideas/generate-daily', {
@@ -123,6 +176,7 @@ export default function IdeasPage() {
 
       if (!error) {
         setIdeas(ideas.filter(i => i.id !== ideaId));
+        setSelectedIdeaIds(prev => prev.filter(id => id !== ideaId));
         toast.success(newStatus === 'liked' ? 'Saved to Liked Ideas.' : newStatus === 'trashed' ? 'Moved to Trash.' : 'Status updated.');
       } else {
         toast.error('Failed to update status.');
@@ -146,6 +200,7 @@ export default function IdeasPage() {
 
       if (res.ok) {
         setIdeas(ideas.filter(i => i.id !== ideaId));
+        setSelectedIdeaIds(prev => prev.filter(id => id !== ideaId));
         toast.success('Idea restored to active ideas.');
       } else {
         const data = await res.json();
@@ -156,6 +211,171 @@ export default function IdeasPage() {
       toast.error('Restore failed.');
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const handlePermanentDelete = async (ideaId: string) => {
+    setActionLoading(ideaId);
+    try {
+      const { error } = await supabase
+        .from('content_ideas')
+        .delete()
+        .eq('id', ideaId);
+
+      if (!error) {
+        setIdeas(ideas.filter(i => i.id !== ideaId));
+        setSelectedIdeaIds(prev => prev.filter(id => id !== ideaId));
+        toast.success('Idea permanently deleted.');
+      } else {
+        toast.error('Failed to permanently delete idea.');
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error('Delete failed.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Bulk operations
+  const toggleSelectIdea = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIdeaIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIdeaIds.length === ideas.length) {
+      setSelectedIdeaIds([]);
+    } else {
+      setSelectedIdeaIds(ideas.map(i => i.id));
+    }
+  };
+
+  const handleBulkTrash = async () => {
+    if (selectedIdeaIds.length === 0) return;
+    setBulkProcessing(true);
+    try {
+      const { error } = await supabase
+        .from('content_ideas')
+        .update({ status: 'trashed', trashed_at: new Date().toISOString() })
+        .in('id', selectedIdeaIds);
+
+      if (!error) {
+        setIdeas(ideas.filter(i => !selectedIdeaIds.includes(i.id)));
+        toast.success(`Moved ${selectedIdeaIds.length} ideas to Trash.`);
+        setSelectedIdeaIds([]);
+      } else {
+        toast.error('Failed to move selected ideas to trash.');
+      }
+    } catch (e) {
+      toast.error('Bulk trash failed.');
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleBulkLike = async () => {
+    if (selectedIdeaIds.length === 0) return;
+    setBulkProcessing(true);
+    try {
+      const { error } = await supabase
+        .from('content_ideas')
+        .update({ status: 'liked', trashed_at: null })
+        .in('id', selectedIdeaIds);
+
+      if (!error) {
+        setIdeas(ideas.filter(i => !selectedIdeaIds.includes(i.id)));
+        toast.success(`Saved ${selectedIdeaIds.length} ideas to Liked.`);
+        setSelectedIdeaIds([]);
+      } else {
+        toast.error('Failed to like selected ideas.');
+      }
+    } catch (e) {
+      toast.error('Bulk like failed.');
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleBulkRestore = async () => {
+    if (selectedIdeaIds.length === 0) return;
+    setBulkProcessing(true);
+    try {
+      const { error } = await supabase
+        .from('content_ideas')
+        .update({ status: 'fresh', trashed_at: null })
+        .in('id', selectedIdeaIds);
+
+      if (!error) {
+        setIdeas(ideas.filter(i => !selectedIdeaIds.includes(i.id)));
+        toast.success(`Restored ${selectedIdeaIds.length} ideas.`);
+        setSelectedIdeaIds([]);
+      } else {
+        toast.error('Failed to restore selected ideas.');
+      }
+    } catch (e) {
+      toast.error('Bulk restore failed.');
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleBulkPermanentDelete = async () => {
+    if (selectedIdeaIds.length === 0) return;
+    setBulkProcessing(true);
+    try {
+      const { error } = await supabase
+        .from('content_ideas')
+        .delete()
+        .in('id', selectedIdeaIds);
+
+      if (!error) {
+        setIdeas(ideas.filter(i => !selectedIdeaIds.includes(i.id)));
+        toast.success(`Permanently deleted ${selectedIdeaIds.length} ideas.`);
+        setSelectedIdeaIds([]);
+      } else {
+        toast.error('Failed to permanently delete selected ideas.');
+      }
+    } catch (e) {
+      toast.error('Bulk permanent delete failed.');
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleSaveContext = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setContextSaving(true);
+    try {
+      const combinedAudience = contextTopics.trim()
+        ? `${contextAudience.trim()} | Topics: ${contextTopics.trim()}`
+        : contextAudience.trim();
+
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          headline: contextHeadline.trim() || null,
+          target_audience: combinedAudience || null,
+          tone_of_voice: contextTone,
+          core_pillars: contextPillars.map(p => p.trim()).filter(Boolean)
+        })
+      });
+
+      if (res.ok) {
+        toast.success('Context and content pillars saved successfully.');
+        setShowContextModal(false);
+        fetchProfile();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to update context');
+      }
+    } catch (err) {
+      toast.error('Error saving context');
+    } finally {
+      setContextSaving(false);
     }
   };
 
@@ -192,6 +412,12 @@ export default function IdeasPage() {
     setSelectedDate(d.toISOString().split('T')[0]);
   };
 
+  const getHoursLeft = (trashedAt: string | null) => {
+    if (!trashedAt) return 24;
+    const diffHours = (Date.now() - new Date(trashedAt).getTime()) / (1000 * 60 * 60);
+    return Math.max(0, Math.round(24 - diffHours));
+  };
+
   const isToday = selectedDate === new Date().toISOString().split('T')[0];
 
   const getPillarColor = (pillar: string) => {
@@ -199,22 +425,36 @@ export default function IdeasPage() {
     return PILLAR_COLORS[key] || PILLAR_COLORS.default;
   };
 
+  const canGenerate = masterIdeaGen && (!userProfile || userProfile.can_generate_ideas !== false);
+
   return (
     <div className="ideas-page">
-      {/* Status Tabs */}
-      <div className="tabs-bar">
-        {STATUS_TABS.map(tab => (
-          <button
-            key={tab.key}
-            className={`tab-btn ${activeTab === tab.key ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.key)}
-          >
-            {tab.label}
-            {tab.key === 'fresh' && ideas.length > 0 && activeTab === 'fresh' && (
-              <span className="tab-count">{ideas.length}</span>
-            )}
-          </button>
-        ))}
+      {/* Top Header / Bar */}
+      <div className="top-action-bar">
+        {/* Status Tabs */}
+        <div className="tabs-bar">
+          {STATUS_TABS.map(tab => (
+            <button
+              key={tab.key}
+              className={`tab-btn ${activeTab === tab.key ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              {tab.label}
+              {tab.key === 'fresh' && ideas.length > 0 && activeTab === 'fresh' && (
+                <span className="tab-count">{ideas.length}</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          className="btn-context-edit flex-center"
+          onClick={() => setShowContextModal(true)}
+        >
+          <SlidersHorizontal size={15} />
+          <span>Edit Context & Pillars</span>
+        </button>
       </div>
 
       {/* Date Navigation (only for Fresh) */}
@@ -239,22 +479,22 @@ export default function IdeasPage() {
         <div>
           <h1>{STATUS_TABS.find(t => t.key === activeTab)?.label || 'Ideas'}</h1>
           <p className="text-muted">
-            {activeTab === 'fresh' && `Your daily content ideas for ${isToday ? 'today' : selectedDate}.`}
-            {activeTab === 'liked' && 'Ideas you saved for later.'}
-            {activeTab === 'scheduled' && 'Upcoming scheduled posts.'}
-            {activeTab === 'published' && 'Posts published to LinkedIn.'}
-            {activeTab === 'trashed' && 'Deleted ideas. Restorable within 24 hours.'}
+            {activeTab === 'fresh' && `Your daily 15 ideas for ${isToday ? 'today' : selectedDate}.`}
+            {activeTab === 'liked' && 'Curated ideas saved for future polishing and scheduling.'}
+            {activeTab === 'scheduled' && 'Upcoming scheduled LinkedIn posts.'}
+            {activeTab === 'published' && 'Posts successfully published to LinkedIn.'}
+            {activeTab === 'trashed' && 'Deleted ideas. Restorable for 24 hours before automatic removal.'}
           </p>
         </div>
         {activeTab === 'fresh' && (
           <button
             className="btn-primary flex-center generate-btn"
             onClick={handleGenerate}
-            disabled={generating || (userProfile && !userProfile.can_generate_ideas)}
-            title={userProfile && !userProfile.can_generate_ideas ? 'Idea generation disabled by admin' : ''}
+            disabled={generating || !canGenerate}
+            title={!masterIdeaGen ? 'Idea generation disabled system-wide' : userProfile && !userProfile.can_generate_ideas ? 'Idea generation disabled for your account' : ''}
           >
             {generating ? <Loader2 size={16} className="spin" /> : <Wand2 size={16} />}
-            {generating ? 'Generating...' : 'Generate 15 Ideas'}
+            <span>{generating ? 'Generating 15 Ideas...' : 'Generate 15 Ideas'}</span>
           </button>
         )}
       </div>
@@ -275,10 +515,12 @@ export default function IdeasPage() {
         <div className="empty-state glass-card">
           <Wand2 size={32} />
           <h3>
-            {activeTab === 'fresh' ? 'No ideas for this date' : `No ${activeTab} ideas`}
+            {activeTab === 'fresh' ? 'No ideas generated for this date' : `No ${activeTab} ideas`}
           </h3>
           <p className="text-muted">
-            {activeTab === 'fresh' ? 'Click "Generate 15 Ideas" to create your daily content batch.' : 'Items will appear here as you use the platform.'}
+            {activeTab === 'fresh'
+              ? 'Click "Generate 15 Ideas" to produce your targeted daily batch.'
+              : 'Items will appear here as you curate, schedule, and publish posts.'}
           </p>
           {activeTab === 'fresh' && !isToday && (
             <button className="btn-primary flex-center" onClick={() => setSelectedDate(new Date().toISOString().split('T')[0])}>
@@ -288,23 +530,52 @@ export default function IdeasPage() {
         </div>
       ) : (
         <div className="ideas-grid">
-          {ideas.map(idea => (
-            <div key={idea.id} className="glass-card idea-card">
-              <div className="card-header">
-                <span className="pillar-tag" style={{ background: `${getPillarColor(idea.pillar)}20`, color: getPillarColor(idea.pillar), borderColor: `${getPillarColor(idea.pillar)}40` }}>
-                  {idea.pillar?.replace(/_/g, ' ') || 'General'}
-                </span>
-                <div className="card-actions">
-                  {activeTab === 'fresh' && (
-                    <>
-                      <button
-                        className="action-btn like-btn"
-                        onClick={(e) => { e.stopPropagation(); handleStatusChange(idea.id, 'liked'); }}
-                        disabled={actionLoading === idea.id}
-                        title="Save to Liked"
-                      >
-                        <Heart size={15} />
-                      </button>
+          {ideas.map(idea => {
+            const isSelected = selectedIdeaIds.includes(idea.id);
+            const hoursRemaining = getHoursLeft(idea.trashed_at);
+
+            return (
+              <div
+                key={idea.id}
+                className={`glass-card idea-card ${isSelected ? 'selected' : ''}`}
+              >
+                <div className="card-header">
+                  <div className="header-left">
+                    <button
+                      type="button"
+                      className="select-checkbox"
+                      onClick={(e) => toggleSelectIdea(idea.id, e)}
+                      title={isSelected ? 'Deselect idea' : 'Select idea'}
+                    >
+                      {isSelected ? <CheckSquare size={16} className="checked-icon" /> : <Square size={16} />}
+                    </button>
+                    <span className="pillar-tag" style={{ background: `${getPillarColor(idea.pillar)}18`, color: getPillarColor(idea.pillar), borderColor: `${getPillarColor(idea.pillar)}35` }}>
+                      {idea.pillar?.replace(/_/g, ' ') || 'General'}
+                    </span>
+                  </div>
+
+                  <div className="card-actions">
+                    {activeTab === 'fresh' && (
+                      <>
+                        <button
+                          className="action-btn like-btn"
+                          onClick={(e) => { e.stopPropagation(); handleStatusChange(idea.id, 'liked'); }}
+                          disabled={actionLoading === idea.id}
+                          title="Save to Liked"
+                        >
+                          <Heart size={15} />
+                        </button>
+                        <button
+                          className="action-btn trash-btn"
+                          onClick={(e) => { e.stopPropagation(); handleStatusChange(idea.id, 'trashed'); }}
+                          disabled={actionLoading === idea.id}
+                          title="Move to Trash"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </>
+                    )}
+                    {activeTab === 'liked' && (
                       <button
                         className="action-btn trash-btn"
                         onClick={(e) => { e.stopPropagation(); handleStatusChange(idea.id, 'trashed'); }}
@@ -313,65 +584,125 @@ export default function IdeasPage() {
                       >
                         <Trash2 size={15} />
                       </button>
-                    </>
-                  )}
-                  {activeTab === 'liked' && (
-                    <button
-                      className="action-btn trash-btn"
-                      onClick={(e) => { e.stopPropagation(); handleStatusChange(idea.id, 'trashed'); }}
-                      disabled={actionLoading === idea.id}
-                      title="Move to Trash"
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  )}
+                    )}
+                    {activeTab === 'trashed' && (
+                      <>
+                        <button
+                          className="action-btn restore-btn"
+                          onClick={(e) => { e.stopPropagation(); handleRestore(idea.id); }}
+                          disabled={actionLoading === idea.id}
+                          title="Restore to Active Ideas"
+                        >
+                          <RotateCcw size={15} />
+                        </button>
+                        <button
+                          className="action-btn perm-delete-btn"
+                          onClick={(e) => { e.stopPropagation(); handlePermanentDelete(idea.id); }}
+                          disabled={actionLoading === idea.id}
+                          title="Permanently Delete"
+                        >
+                          <X size={15} />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="card-body" onClick={() => setSelectedIdea(idea)}>
                   {activeTab === 'trashed' && (
-                    <button
-                      className="action-btn restore-btn"
-                      onClick={(e) => { e.stopPropagation(); handleRestore(idea.id); }}
-                      disabled={actionLoading === idea.id}
-                      title="Restore"
-                    >
-                      <RotateCcw size={15} />
-                    </button>
+                    <div className="trash-expiry-badge">
+                      <Clock size={12} />
+                      <span>{hoursRemaining}h left to restore</span>
+                    </div>
+                  )}
+
+                  <h3 className="idea-headline">{idea.headline}</h3>
+                  <p className="idea-hook">
+                    {idea.hook_options?.[idea.selected_hook_index || 0]?.substring(0, 140)}
+                    {idea.hook_options?.[idea.selected_hook_index || 0]?.length > 140 ? '...' : ''}
+                  </p>
+                  {idea.hook_options && idea.hook_options.length > 1 && (
+                    <div className="hook-pill-row" onClick={(e) => e.stopPropagation()}>
+                      <span className="hook-pill-label">Hook:</span>
+                      {idea.hook_options.map((_: any, idx: number) => (
+                        <button
+                          key={idx}
+                          className={`hook-mini-pill ${(idea.selected_hook_index || 0) === idx ? 'active' : ''}`}
+                          onClick={() => handleHookSelect(idea.id, idx)}
+                        >
+                          {idx + 1}
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
-              </div>
 
-              <div className="card-body" onClick={() => setSelectedIdea(idea)}>
-                <h3 className="idea-headline">{idea.headline}</h3>
-                <p className="idea-hook">
-                  {idea.hook_options?.[idea.selected_hook_index || 0]?.substring(0, 140)}
-                  {idea.hook_options?.[idea.selected_hook_index || 0]?.length > 140 ? '...' : ''}
-                </p>
-                {idea.hook_options && idea.hook_options.length > 1 && (
-                  <div className="hook-pill-row" onClick={(e) => e.stopPropagation()}>
-                    <span className="hook-pill-label">Hook:</span>
-                    {idea.hook_options.map((_: any, idx: number) => (
-                      <button
-                        key={idx}
-                        className={`hook-mini-pill ${(idea.selected_hook_index || 0) === idx ? 'active' : ''}`}
-                        onClick={() => handleHookSelect(idea.id, idx)}
-                      >
-                        {idx + 1}
-                      </button>
+                <div className="card-footer">
+                  <div className="tags-preview">
+                    {(idea.hashtags || []).slice(0, 3).map((tag: string, i: number) => (
+                      <span key={i} className="mini-tag">{tag}</span>
                     ))}
                   </div>
-                )}
-              </div>
-
-              <div className="card-footer">
-                <div className="tags-preview">
-                  {(idea.hashtags || []).slice(0, 3).map((tag: string, i: number) => (
-                    <span key={i} className="mini-tag">{tag}</span>
-                  ))}
+                  <button className="open-studio-btn" onClick={() => setSelectedIdea(idea)}>
+                    Open Studio <ChevronRight size={14} />
+                  </button>
                 </div>
-                <button className="open-studio-btn" onClick={() => setSelectedIdea(idea)}>
-                  Open Studio <ChevronRight size={14} />
-                </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
+        </div>
+      )}
+
+      {/* Floating Bulk Action Bar */}
+      {selectedIdeaIds.length > 0 && (
+        <div className="bulk-floating-bar glass-card">
+          <div className="bulk-left">
+            <span className="bulk-count">{selectedIdeaIds.length} selected</span>
+            <button className="bulk-text-btn" onClick={toggleSelectAll}>
+              {selectedIdeaIds.length === ideas.length ? 'Deselect All' : 'Select All'}
+            </button>
+          </div>
+          <div className="bulk-actions">
+            {activeTab !== 'trashed' && (
+              <>
+                <button
+                  className="bulk-btn like flex-center"
+                  onClick={handleBulkLike}
+                  disabled={bulkProcessing}
+                >
+                  <Heart size={14} /> Save to Liked
+                </button>
+                <button
+                  className="bulk-btn delete flex-center"
+                  onClick={handleBulkTrash}
+                  disabled={bulkProcessing}
+                >
+                  <Trash2 size={14} /> Move to Trash
+                </button>
+              </>
+            )}
+            {activeTab === 'trashed' && (
+              <>
+                <button
+                  className="bulk-btn restore flex-center"
+                  onClick={handleBulkRestore}
+                  disabled={bulkProcessing}
+                >
+                  <RotateCcw size={14} /> Restore Selected
+                </button>
+                <button
+                  className="bulk-btn perm-delete flex-center"
+                  onClick={handleBulkPermanentDelete}
+                  disabled={bulkProcessing}
+                >
+                  <X size={14} /> Permanently Delete
+                </button>
+              </>
+            )}
+            <button className="bulk-close-btn" onClick={() => setSelectedIdeaIds([])} title="Cancel Selection">
+              <X size={16} />
+            </button>
+          </div>
         </div>
       )}
 
@@ -385,11 +716,118 @@ export default function IdeasPage() {
         />
       )}
 
+      {/* Quick Edit Context & Pillars Modal */}
+      {showContextModal && (
+        <div className="modal-backdrop">
+          <div className="glass-card context-modal-container">
+            <div className="modal-header">
+              <div>
+                <h3>Edit Context & Content Pillars</h3>
+                <p className="text-muted" style={{ fontSize: '0.8rem', margin: 0 }}>
+                  These parameters guide your daily AI idea generation algorithms.
+                </p>
+              </div>
+              <button className="close-btn" onClick={() => setShowContextModal(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveContext} className="context-modal-form">
+              <div className="form-group">
+                <label>Professional Headline & Role</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  value={contextHeadline}
+                  onChange={(e) => setContextHeadline(e.target.value)}
+                  placeholder="e.g. VP of Product at ScaleUp"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Core Topics You Post About</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  value={contextTopics}
+                  onChange={(e) => setContextTopics(e.target.value)}
+                  placeholder="e.g. AI infrastructure, recruitment strategies, engineering leadership"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Target Audience</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  value={contextAudience}
+                  onChange={(e) => setContextAudience(e.target.value)}
+                  placeholder="e.g. Tech Founders, CTOs, Talent Leaders"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Tone of Voice</label>
+                <select
+                  className="input-field"
+                  value={contextTone}
+                  onChange={(e) => setContextTone(e.target.value)}
+                >
+                  <option value="professional">Professional & Authoritative</option>
+                  <option value="conversational">Conversational & Engaging</option>
+                  <option value="inspirational">Inspirational & Visionary</option>
+                  <option value="educational">Educational & Analytical</option>
+                  <option value="bold">Bold & Contrarian</option>
+                </select>
+              </div>
+
+              <div className="pillars-section">
+                <label className="section-label">3 Daily Content Pillars (5 Ideas Each)</label>
+                {contextPillars.map((p, idx) => (
+                  <input
+                    key={idx}
+                    type="text"
+                    className="input-field"
+                    value={p}
+                    onChange={(e) => {
+                      const updated = [...contextPillars];
+                      updated[idx] = e.target.value;
+                      setContextPillars(updated);
+                    }}
+                    placeholder={`Pillar ${idx + 1}`}
+                    required
+                  />
+                ))}
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowContextModal(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary flex-center" disabled={contextSaving}>
+                  {contextSaving ? <Loader2 size={16} className="spin" /> : <Check size={16} />}
+                  <span>Save Context</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <style jsx>{`
         .ideas-page {
           display: flex;
           flex-direction: column;
           gap: 1.5rem;
+          position: relative;
+        }
+
+        .top-action-bar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 1rem;
+          flex-wrap: wrap;
         }
 
         /* Tabs */
@@ -397,7 +835,7 @@ export default function IdeasPage() {
           display: flex;
           gap: 0.5rem;
           overflow-x: auto;
-          padding-bottom: 0.5rem;
+          padding-bottom: 0.25rem;
         }
         .tab-btn {
           padding: 0.5rem 1rem;
@@ -410,6 +848,9 @@ export default function IdeasPage() {
           display: flex;
           align-items: center;
           gap: 0.4rem;
+          background: none;
+          border: none;
+          cursor: pointer;
         }
         .tab-btn:hover {
           background: rgba(148, 163, 184, 0.08);
@@ -429,6 +870,25 @@ export default function IdeasPage() {
           font-weight: 700;
         }
 
+        .btn-context-edit {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          background: transparent;
+          border: 1px solid var(--color-border);
+          padding: 0.45rem 0.85rem;
+          border-radius: var(--radius-md);
+          font-size: 0.825rem;
+          font-weight: 500;
+          color: var(--color-text-primary);
+          cursor: pointer;
+          transition: 0.2s;
+        }
+        .btn-context-edit:hover {
+          background: rgba(148, 163, 184, 0.08);
+          border-color: var(--color-brand);
+        }
+
         /* Date Nav */
         .date-nav {
           display: flex;
@@ -444,6 +904,9 @@ export default function IdeasPage() {
           padding: 0.4rem;
           border-radius: var(--radius-md);
           color: var(--color-text-secondary);
+          background: none;
+          border: none;
+          cursor: pointer;
           transition: 0.2s;
         }
         .date-nav-btn:hover {
@@ -454,51 +917,53 @@ export default function IdeasPage() {
           display: flex;
           align-items: center;
           gap: 0.5rem;
+          font-size: 0.95rem;
+          font-weight: 600;
           color: var(--color-text-primary);
-          font-weight: 500;
         }
         .date-value {
-          color: var(--color-text-muted);
           font-size: 0.8rem;
+          color: var(--color-text-muted);
           font-weight: 400;
         }
 
-        /* Header */
+        /* Page Header */
         .page-header {
           display: flex;
           justify-content: space-between;
-          align-items: flex-start;
+          align-items: center;
         }
         .page-header h1 {
-          font-size: 1.85rem;
+          font-size: 1.5rem;
           color: var(--color-text-primary);
-          margin-bottom: 0.25rem;
+          margin-bottom: 0.2rem;
         }
-        .text-muted { color: var(--color-text-muted); font-size: 0.875rem; }
-        .flex-center { display: flex; align-items: center; gap: 0.5rem; justify-content: center; }
-        .generate-btn { padding: 0.65rem 1.25rem; }
+        .text-muted { color: var(--color-text-muted); font-size: 0.85rem; }
+        .generate-btn { padding: 0.6rem 1.25rem; }
+        .generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        /* Loading & Empty */
-        .loading-state { display: flex; justify-content: center; padding: 4rem 0; color: var(--color-brand); }
-        .empty-state { padding: 4rem 2rem; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 0.75rem; color: var(--color-text-muted); }
-        .empty-state h3 { color: var(--color-text-primary); font-size: 1.1rem; }
-
-        /* Grid */
+        /* Ideas Grid */
         .ideas-grid {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-          gap: 1rem;
+          gap: 1.25rem;
         }
         .idea-card {
-          padding: 1.25rem;
           display: flex;
           flex-direction: column;
-          gap: 0.85rem;
-          transition: transform 0.2s, box-shadow 0.2s;
+          border-radius: var(--radius-lg);
+          padding: 1.25rem;
+          gap: 1rem;
+          transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+          position: relative;
         }
         .idea-card:hover {
           transform: translateY(-2px);
           box-shadow: var(--shadow-md);
+        }
+        .idea-card.selected {
+          border-color: var(--color-brand);
+          background: rgba(59, 130, 246, 0.03);
         }
 
         .card-header {
@@ -506,35 +971,73 @@ export default function IdeasPage() {
           justify-content: space-between;
           align-items: center;
         }
-        .pillar-tag {
-          font-size: 0.7rem;
-          font-weight: 600;
-          padding: 0.2rem 0.6rem;
-          border-radius: 999px;
-          text-transform: capitalize;
-          border: 1px solid;
+        .header-left {
+          display: flex;
+          align-items: center;
+          gap: 0.6rem;
         }
+        .select-checkbox {
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: var(--color-text-muted);
+          display: flex;
+          align-items: center;
+          padding: 0;
+          transition: color 0.2s;
+        }
+        .select-checkbox:hover { color: var(--color-brand); }
+        .checked-icon { color: var(--color-brand); }
+
+        .pillar-tag {
+          font-size: 0.72rem;
+          font-weight: 600;
+          padding: 0.2rem 0.55rem;
+          border-radius: 999px;
+          border: 1px solid;
+          text-transform: capitalize;
+        }
+
         .card-actions {
           display: flex;
-          gap: 0.25rem;
+          align-items: center;
+          gap: 0.35rem;
         }
         .action-btn {
           padding: 0.35rem;
           border-radius: var(--radius-md);
-          color: var(--color-text-muted);
-          transition: all 0.2s;
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          color: var(--color-text-secondary);
+          transition: 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
         }
-        .action-btn:hover { color: var(--color-text-primary); }
-        .like-btn:hover { color: #ec4899; background: rgba(236, 72, 153, 0.1); }
+        .action-btn:hover { background: rgba(148, 163, 184, 0.1); color: var(--color-text-primary); }
+        .like-btn:hover { color: var(--color-danger); background: rgba(239, 68, 68, 0.1); }
         .trash-btn:hover { color: var(--color-danger); background: rgba(239, 68, 68, 0.1); }
         .restore-btn:hover { color: var(--color-success); background: rgba(16, 185, 129, 0.1); }
+        .perm-delete-btn:hover { color: var(--color-danger); background: rgba(239, 68, 68, 0.1); }
 
         .card-body {
-          cursor: pointer;
+          flex: 1;
           display: flex;
           flex-direction: column;
-          gap: 0.5rem;
-          flex: 1;
+          gap: 0.6rem;
+          cursor: pointer;
+        }
+        .trash-expiry-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          font-size: 0.72rem;
+          color: var(--color-warning);
+          background: rgba(245, 158, 11, 0.1);
+          padding: 0.2rem 0.5rem;
+          border-radius: var(--radius-sm);
+          width: fit-content;
         }
         .idea-headline {
           font-size: 1.05rem;
@@ -548,56 +1051,11 @@ export default function IdeasPage() {
           line-height: 1.5;
         }
 
-        .card-footer {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          border-top: 1px solid var(--color-border);
-          padding-top: 0.75rem;
-        }
-        .tags-preview {
-          display: flex;
-          gap: 0.3rem;
-          flex-wrap: wrap;
-        }
-        .mini-tag {
-          font-size: 0.65rem;
-          color: var(--color-brand);
-          background: rgba(59, 130, 246, 0.08);
-          padding: 0.15rem 0.4rem;
-          border-radius: 4px;
-        }
-        .open-studio-btn {
-          display: flex;
-          align-items: center;
-          gap: 0.3rem;
-          font-size: 0.8rem;
-          color: var(--color-brand);
-          font-weight: 500;
-          padding: 0.3rem 0.5rem;
-          border-radius: var(--radius-md);
-          transition: background 0.2s;
-        }
-        .open-studio-btn:hover {
-          background: rgba(59, 130, 246, 0.08);
-        }
-
-        .spin { animation: spin 1s linear infinite; }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
-
-        @media (max-width: 768px) {
-          .ideas-grid { grid-template-columns: 1fr; }
-          .page-header { flex-direction: column; gap: 1rem; }
-          .page-header h1 { font-size: 1.5rem; }
-          .generate-btn { width: 100%; }
-          .tabs-bar { gap: 0.25rem; }
-          .tab-btn { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
-        }
         .hook-pill-row {
           display: flex;
           align-items: center;
-          gap: 0.35rem;
-          margin-top: 0.5rem;
+          gap: 0.4rem;
+          margin-top: 0.25rem;
         }
         .hook-pill-label {
           font-size: 0.72rem;
@@ -605,23 +1063,239 @@ export default function IdeasPage() {
           font-weight: 500;
         }
         .hook-mini-pill {
-          padding: 0.15rem 0.45rem;
-          border-radius: 4px;
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
           font-size: 0.72rem;
           font-weight: 600;
-          color: var(--color-text-secondary);
-          background: rgba(148, 163, 184, 0.08);
+          display: flex;
+          align-items: center;
+          justify-content: center;
           border: 1px solid var(--color-border);
-          transition: all 0.15s;
+          background: transparent;
+          color: var(--color-text-secondary);
+          cursor: pointer;
+          transition: 0.2s;
         }
-        .hook-mini-pill:hover {
-          border-color: var(--color-brand);
-          color: var(--color-brand);
-        }
+        .hook-mini-pill:hover { border-color: var(--color-brand); }
         .hook-mini-pill.active {
           background: var(--color-brand);
-          color: #ffffff;
+          color: white;
           border-color: var(--color-brand);
+        }
+
+        .card-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding-top: 0.75rem;
+          border-top: 1px solid var(--color-border);
+        }
+        .tags-preview { display: flex; gap: 0.35rem; }
+        .mini-tag {
+          font-size: 0.7rem;
+          color: var(--color-text-muted);
+          background: rgba(148, 163, 184, 0.08);
+          padding: 0.15rem 0.45rem;
+          border-radius: var(--radius-sm);
+        }
+        .open-studio-btn {
+          display: flex;
+          align-items: center;
+          gap: 0.25rem;
+          font-size: 0.8rem;
+          font-weight: 600;
+          color: var(--color-brand);
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 0.25rem 0.5rem;
+          border-radius: var(--radius-sm);
+          transition: 0.2s;
+        }
+        .open-studio-btn:hover { background: rgba(59, 130, 246, 0.08); }
+
+        /* Floating Bulk Action Bar */
+        .bulk-floating-bar {
+          position: fixed;
+          bottom: 2rem;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          align-items: center;
+          gap: 1.5rem;
+          padding: 0.85rem 1.5rem;
+          border-radius: 999px;
+          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+          border: 1px solid var(--color-brand);
+          background: var(--color-surface);
+          z-index: 50;
+        }
+        .bulk-left {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+        }
+        .bulk-count {
+          font-size: 0.85rem;
+          font-weight: 600;
+          color: var(--color-brand);
+        }
+        .bulk-text-btn {
+          background: none;
+          border: none;
+          font-size: 0.75rem;
+          color: var(--color-text-secondary);
+          cursor: pointer;
+          text-decoration: underline;
+        }
+        .bulk-actions {
+          display: flex;
+          align-items: center;
+          gap: 0.6rem;
+        }
+        .bulk-btn {
+          padding: 0.45rem 0.85rem;
+          border-radius: var(--radius-md);
+          font-size: 0.8rem;
+          font-weight: 500;
+          border: none;
+          cursor: pointer;
+          transition: 0.2s;
+        }
+        .bulk-btn.like { background: rgba(239, 68, 68, 0.1); color: var(--color-danger); }
+        .bulk-btn.like:hover { background: rgba(239, 68, 68, 0.2); }
+        .bulk-btn.delete { background: rgba(239, 68, 68, 0.1); color: var(--color-danger); }
+        .bulk-btn.delete:hover { background: rgba(239, 68, 68, 0.2); }
+        .bulk-btn.restore { background: rgba(16, 185, 129, 0.1); color: var(--color-success); }
+        .bulk-btn.restore:hover { background: rgba(16, 185, 129, 0.2); }
+        .bulk-btn.perm-delete { background: rgba(239, 68, 68, 0.15); color: var(--color-danger); }
+        .bulk-btn.perm-delete:hover { background: rgba(239, 68, 68, 0.25); }
+        .bulk-close-btn {
+          background: none;
+          border: none;
+          color: var(--color-text-muted);
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          padding: 0.25rem;
+        }
+
+        /* Modals */
+        .modal-backdrop {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(0, 0, 0, 0.6);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 100;
+          padding: 1rem;
+        }
+        .context-modal-container {
+          width: 100%;
+          max-width: 520px;
+          padding: 1.75rem;
+          display: flex;
+          flex-direction: column;
+          gap: 1.25rem;
+          max-height: 90vh;
+          overflow-y: auto;
+        }
+        .modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          padding-bottom: 0.75rem;
+          border-bottom: 1px solid var(--color-border);
+        }
+        .modal-header h3 {
+          font-size: 1.2rem;
+          font-weight: 600;
+          color: var(--color-text-primary);
+        }
+        .close-btn {
+          color: var(--color-text-muted);
+          padding: 0.25rem;
+          background: none;
+          border: none;
+          cursor: pointer;
+        }
+        .context-modal-form {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        .form-group {
+          display: flex;
+          flex-direction: column;
+          gap: 0.35rem;
+        }
+        .form-group label {
+          font-size: 0.825rem;
+          font-weight: 500;
+          color: var(--color-text-secondary);
+        }
+        .pillars-section {
+          background: rgba(148, 163, 184, 0.05);
+          padding: 0.85rem;
+          border-radius: var(--radius-md);
+          display: flex;
+          flex-direction: column;
+          gap: 0.6rem;
+        }
+        .section-label {
+          font-size: 0.78rem;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          color: var(--color-text-secondary);
+        }
+        .modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 0.75rem;
+          margin-top: 0.5rem;
+        }
+        .btn-secondary {
+          background: transparent;
+          border: 1px solid var(--color-border);
+          color: var(--color-text-primary);
+          padding: 0.5rem 1rem;
+          border-radius: var(--radius-md);
+          font-weight: 500;
+          cursor: pointer;
+        }
+        .btn-secondary:hover { background: rgba(148, 163, 184, 0.08); }
+
+        .empty-state {
+          padding: 4rem 2rem;
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 0.75rem;
+        }
+        .skeleton-card { height: 210px; padding: 1.25rem; }
+        .skeleton {
+          background: rgba(148, 163, 184, 0.1);
+          border-radius: var(--radius-sm);
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 0.6; }
+          50% { opacity: 0.3; }
+        }
+
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        @media (max-width: 640px) {
+          .ideas-grid { grid-template-columns: 1fr; }
+          .page-header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+          .top-action-bar { flex-direction: column; align-items: stretch; }
+          .bulk-floating-bar { width: 90%; flex-direction: column; border-radius: var(--radius-lg); gap: 0.75rem; }
         }
       `}</style>
     </div>

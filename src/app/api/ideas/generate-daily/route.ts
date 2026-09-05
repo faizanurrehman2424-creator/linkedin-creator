@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getMasterToggles } from '@/lib/system-settings';
 import { GoogleGenAI, Type } from '@google/genai';
 
 const schema = {
@@ -259,6 +260,12 @@ export async function POST(request: Request) {
 
     if (!profile) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+    }
+
+    // Check global master switch
+    const masterToggles = await getMasterToggles();
+    if (!masterToggles.idea_gen) {
+      return NextResponse.json({ error: 'AI Idea Generation is temporarily disabled by administrator.' }, { status: 403 });
     }
 
     if (!profile.can_generate_ideas) {

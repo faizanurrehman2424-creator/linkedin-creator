@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyAdminToken, getAdminTokenFromRequest } from '@/lib/admin-auth';
+import { getMasterToggles } from '@/lib/system-settings';
 
 export async function GET(request: Request) {
   try {
@@ -55,12 +56,13 @@ export async function GET(request: Request) {
       .select('*', { count: 'exact', head: true })
       .eq('status', 'pending');
 
-    // Master toggle states
+    // Master toggle states from persistent storage
+    const toggles = await getMasterToggles();
     const masterToggles = {
-      ideaGeneration: process.env.ADMIN_IDEA_GEN_ENABLED !== 'false',
-      imageGeneration: process.env.ADMIN_IMAGE_GEN_ENABLED !== 'false',
-      videoGeneration: process.env.ADMIN_VIDEO_GEN_ENABLED !== 'false',
-      apifyEnabled: process.env.ADMIN_APIFY_ENABLED !== 'false',
+      ideaGeneration: toggles.idea_gen,
+      imageGeneration: toggles.image_gen,
+      videoGeneration: toggles.video_gen,
+      apifyEnabled: toggles.apify,
     };
 
     return NextResponse.json({
