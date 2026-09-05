@@ -46,17 +46,25 @@ export function Header() {
   // Fetch Supabase session user
   useEffect(() => {
     async function getUser() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        setCurrentUser(user);
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-        if (profile?.role) {
-          setUserRole(profile.role);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          setCurrentUser(session.user);
+          const headers: Record<string, string> = {};
+          if (session.access_token) {
+            headers['Authorization'] = `Bearer ${session.access_token}`;
+          }
+          const res = await fetch('/api/profile', { headers });
+          if (res.ok) {
+            const data = await res.json();
+            const prof = data.profile || data;
+            if (prof?.role) {
+              setUserRole(prof.role);
+            }
+          }
         }
+      } catch (e) {
+        console.error('Header profile load error:', e);
       }
     }
     getUser();

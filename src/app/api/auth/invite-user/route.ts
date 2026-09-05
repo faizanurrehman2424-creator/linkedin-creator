@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient, createClient } from '@/lib/supabase/server';
+import { verifyAdminToken, getAdminTokenFromRequest } from '@/lib/admin-auth';
 
 export async function POST(request: Request) {
   try {
@@ -9,26 +10,43 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
-    // Verify caller is admin
-    const supabaseUser = await createClient();
-    const { data: { user } } = await supabaseUser.auth.getUser();
-    
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabaseAdmin = await createAdminClient();
+    const adminToken = getAdminTokenFromRequest(request);
+    const isAdminJwt = Boolean(adminToken && verifyAdminToken(adminToken));
+
+    let isAllowed = isAdminJwt;
+    if (!isAllowed) {
+      let user: any = null;
+      const authHeader = request.headers.get('authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        const { data: { user: tokenUser } } = await supabaseAdmin.auth.getUser(token);
+        if (tokenUser) user = tokenUser;
+      }
+      if (!user) {
+        const supabaseUser = await createClient();
+        const { data: { user: cookieUser } } = await supabaseUser.auth.getUser();
+        if (cookieUser) user = cookieUser;
+      }
+
+      if (user) {
+        const { data: profile } = await supabaseAdmin
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (profile?.role === 'admin') {
+          isAllowed = true;
+        }
+      }
     }
 
-    const { data: profile } = await supabaseUser
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single();
-
-    if (profile?.role !== 'admin') {
+    if (!isAllowed) {
       return NextResponse.json({ error: 'Forbidden. Admin role required.' }, { status: 403 });
     }
 
     // Use admin client to invite
-    const supabaseAdmin = await createAdminClient();
     const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
       data: {
         full_name: fullName || '',

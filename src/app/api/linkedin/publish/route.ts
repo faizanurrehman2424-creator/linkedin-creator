@@ -4,8 +4,23 @@ import { publishToLinkedIn, fetchLinkedInUserInfo } from '@/lib/linkedin';
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const adminSupabase = await createAdminClient();
+    let user: any = null;
+
+    // Check Bearer token
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const { data: { user: tokenUser } } = await adminSupabase.auth.getUser(token);
+      if (tokenUser) user = tokenUser;
+    }
+
+    // Check cookies
+    if (!user) {
+      const supabase = await createClient();
+      const { data: { user: cookieUser } } = await supabase.auth.getUser();
+      if (cookieUser) user = cookieUser;
+    }
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized. Please sign in.' }, { status: 401 });
@@ -18,11 +33,11 @@ export async function POST(request: Request) {
     }
 
     // Fetch user profile to verify LinkedIn integration
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileError } = await adminSupabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
     if (profileError || !profile) {
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
@@ -35,12 +50,12 @@ export async function POST(request: Request) {
     }
 
     // Fetch the target idea
-    const { data: idea, error: ideaError } = await supabase
+    const { data: idea, error: ideaError } = await adminSupabase
       .from('content_ideas')
       .select('*')
       .eq('id', ideaId)
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (ideaError || !idea) {
       return NextResponse.json({ error: 'Post idea not found' }, { status: 404 });

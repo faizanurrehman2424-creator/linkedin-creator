@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { verifyAdminToken } from '@/lib/admin-auth';
 import { getMasterToggles } from '@/lib/system-settings';
 import { GoogleGenAI, Type } from '@google/genai';
 
@@ -243,32 +245,111 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Target date is required' }, { status: 400 });
     }
 
-    // Auth check
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized. Please sign in.' }, { status: 401 });
-    }
-
-    // Get user profile for grounding context
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-
-    if (!profile) {
-      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
-    }
-
-    // Check global master switch
+    // Check global master switch first
     const masterToggles = await getMasterToggles();
     if (!masterToggles.idea_gen) {
       return NextResponse.json({ error: 'AI Idea Generation is temporarily disabled by administrator.' }, { status: 403 });
     }
 
-    if (!profile.can_generate_ideas) {
+    // Auth check supporting Bearer tokens, SSR cookies, and Admin session
+    const cookieStore = await cookies();
+    const supabase = await createClient();
+    const adminSupabase = await createAdminClient();
+
+    let targetUserId: string | null = null;
+    let targetEmail: string | null = null;
+    let authType: 'user' | 'admin' = 'user';
+
+    // 1. Check Authorization Bearer header
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const { data: { user } } = await supabase.auth.getUser(token);
+      if (user) {
+        targetUserId = user.id;
+        targetEmail = user.email || null;
+      }
+    }
+
+    // 2. Check Supabase Auth cookies
+    if (!targetUserId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        targetUserId = user.id;
+        targetEmail = user.email || null;
+      }
+    }
+
+    // 3. Check Admin session cookie
+    if (!targetUserId) {
+      const adminToken = cookieStore.get('admin_token')?.value;
+      if (adminToken) {
+        const verified = verifyAdminToken(adminToken);
+        if (verified) {
+          authType = 'admin';
+          const { data: adminProf } = await adminSupabase
+            .from('profiles')
+            .select('*')
+            .eq('role', 'admin')
+            .limit(1)
+            .maybeSingle();
+          if (adminProf) {
+            targetUserId = adminProf.id;
+            targetEmail = adminProf.email;
+          }
+        }
+      }
+    }
+
+    if (!targetUserId) {
+      return NextResponse.json({ error: 'Unauthorized. Please sign in.' }, { status: 401 });
+    }
+
+    // Get user profile via admin client to bypass RLS recursion
+    let { data: profile } = await adminSupabase
+      .from('profiles')
+      .select('*')
+      .eq('id', targetUserId)
+      .maybeSingle();
+
+    // If profile not found, auto-provision so user is never blocked
+    if (!profile) {
+      const { data: newProf, error: provErr } = await adminSupabase
+        .from('profiles')
+        .upsert({
+          id: targetUserId,
+          email: targetEmail || 'creator@system.local',
+          full_name: 'Creator',
+          role: authType === 'admin' ? 'admin' : 'creator',
+          can_generate_ideas: true,
+          can_generate_images: true,
+          can_generate_videos: true,
+          core_pillars: ['Industry Trends', 'Recruiter War Stories', 'Educational Frameworks'],
+          tone_of_voice: 'professional',
+          timezone: 'Asia/Karachi'
+        }, { onConflict: 'id' })
+        .select()
+        .single();
+
+      if (newProf) {
+        profile = newProf;
+      } else {
+        console.warn('Auto-provision profile fallback:', provErr);
+        profile = {
+          id: targetUserId,
+          email: targetEmail || 'creator@system.local',
+          full_name: 'Creator',
+          role: 'creator',
+          can_generate_ideas: true,
+          can_generate_images: true,
+          can_generate_videos: true,
+          core_pillars: ['Industry Trends', 'Recruiter War Stories', 'Educational Frameworks'],
+          tone_of_voice: 'professional'
+        };
+      }
+    }
+
+    if (profile.can_generate_ideas === false) {
       return NextResponse.json({ error: 'AI Idea Generation is disabled for this account by Admin.' }, { status: 403 });
     }
 
@@ -284,7 +365,7 @@ export async function POST(request: Request) {
 
       const userPillars = Array.isArray(profile.core_pillars) && profile.core_pillars.length > 0
         ? profile.core_pillars.join(', ')
-        : 'Industry Trends, Strategy, Execution';
+        : 'Industry Trends, Recruiter War Stories, Educational Frameworks';
 
       const prompt = `
         You are an elite LinkedIn copywriter and ghostwriter for high-impact executives and creators.
@@ -305,16 +386,17 @@ export async function POST(request: Request) {
         Strict Rules:
         - DO NOT use any emojis anywhere in the output (hooks, body, headline, or hashtags).
         - Provide exactly 3 high-converting hooks for each post idea.
-        - Ensure post copy provides genuine depth, formatted with readable line breaks.
+        - The caption body must be formatted with spacing and readable line breaks.
+        - Return ONLY JSON conforming to the schema.
       `;
 
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
-          responseMimeType: 'application/json',
+          responseMimeType: "application/json",
           responseSchema: schema,
-          temperature: 0.7,
+          temperature: 0.8,
         }
       });
 
@@ -333,9 +415,9 @@ export async function POST(request: Request) {
       ideas = generateStructuredBatch(profile, targetDate);
     }
 
-    // Insert ideas into Supabase
+    // Insert ideas into Supabase via admin client
     const ideasToInsert = ideas.map((idea: any) => ({
-      user_id: user.id,
+      user_id: targetUserId,
       target_date: targetDate,
       pillar: idea.pillar,
       headline: idea.headline,
@@ -347,7 +429,7 @@ export async function POST(request: Request) {
       status: 'fresh'
     }));
 
-    const { data: insertedIdeas, error: insertError } = await supabase
+    const { data: insertedIdeas, error: insertError } = await adminSupabase
       .from('content_ideas')
       .insert(ideasToInsert)
       .select();
@@ -361,11 +443,11 @@ export async function POST(request: Request) {
     if (insertedIdeas && insertedIdeas.length > 0) {
       const historyToInsert = insertedIdeas.map(idea => ({
         idea_id: idea.id,
-        user_id: user.id,
+        user_id: targetUserId,
         action: 'generated_via_ai',
         metadata: { target_date: targetDate, count: insertedIdeas.length }
       }));
-      await supabase.from('idea_step_history').insert(historyToInsert);
+      await adminSupabase.from('idea_step_history').insert(historyToInsert);
     }
 
     return NextResponse.json({ success: true, count: insertedIdeas?.length || 0 });

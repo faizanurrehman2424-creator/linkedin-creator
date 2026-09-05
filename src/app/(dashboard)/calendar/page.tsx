@@ -27,14 +27,22 @@ export default function CalendarPage() {
         setIdeas(data);
       }
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: prof } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        if (prof) setUserProfile(prof);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        try {
+          const headers: Record<string, string> = {};
+          if (session.access_token) {
+            headers['Authorization'] = `Bearer ${session.access_token}`;
+          }
+          const pRes = await fetch('/api/profile', { headers });
+          if (pRes.ok) {
+            const pData = await pRes.json();
+            const prof = pData.profile || pData;
+            if (prof) setUserProfile(prof);
+          }
+        } catch (e) {
+          console.error('Calendar profile fetch error:', e);
+        }
       }
       setLoading(false);
     };

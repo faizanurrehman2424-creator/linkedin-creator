@@ -79,6 +79,31 @@ export async function GET(request: Request) {
     }
 
     if (!profile) {
+      if (auth.type === 'user') {
+        const { data: newProfile, error: insertError } = await adminSupabase
+          .from('profiles')
+          .upsert({
+            id: auth.userId,
+            email: auth.email || 'creator@example.com',
+            role: 'creator',
+            full_name: 'Creator',
+            timezone: 'Asia/Karachi',
+            can_generate_ideas: true,
+            can_generate_images: true,
+            can_generate_videos: true,
+            headline: 'Content Creator & Thought Leader',
+            target_audience: 'B2B Professionals & Founders',
+            tone_of_voice: 'professional',
+            core_pillars: ['Industry Trends', 'Actionable Insights', 'Personal Growth'],
+          }, { onConflict: 'id' })
+          .select()
+          .single();
+
+        if (newProfile && !insertError) {
+          return NextResponse.json({ profile: newProfile });
+        }
+      }
+
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
@@ -148,16 +173,29 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Profile ID could not be determined' }, { status: 400 });
     }
 
-    const { data: updatedProfile, error: updateError } = await adminSupabase
+    let { data: updatedProfile, error: updateError } = await adminSupabase
       .from('profiles')
       .update(updatePayload)
       .eq('id', targetId)
       .select()
-      .single();
+      .maybeSingle();
 
-    if (updateError) {
-      console.error('Failed to update profile:', updateError);
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    if (!updatedProfile) {
+      const { data: upsertedProfile, error: upsertErr } = await adminSupabase
+        .from('profiles')
+        .upsert({
+          id: targetId,
+          role: auth.type === 'admin' ? 'admin' : 'creator',
+          ...updatePayload,
+        }, { onConflict: 'id' })
+        .select()
+        .single();
+
+      if (upsertErr) {
+        console.error('Failed to upsert profile:', upsertErr);
+        return NextResponse.json({ error: upsertErr.message }, { status: 500 });
+      }
+      updatedProfile = upsertedProfile;
     }
 
     return NextResponse.json({

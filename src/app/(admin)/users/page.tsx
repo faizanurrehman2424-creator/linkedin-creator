@@ -31,13 +31,14 @@ export default function AdminUsersPage() {
 
   const fetchUsers = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-      
-    if (!error && data) {
-      setUsers(data);
+    try {
+      const res = await fetch('/api/admin/users');
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data.users || data || []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch users:', e);
     }
     setLoading(false);
   };

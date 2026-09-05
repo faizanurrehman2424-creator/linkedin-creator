@@ -81,23 +81,28 @@ export default function IdeasPage() {
   };
 
   const fetchProfile = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (data) {
-        setUserProfile(data);
-        setContextHeadline(data.headline || '');
-        setContextAudience(data.target_audience || '');
-        setContextTone(data.tone_of_voice || 'professional');
-        if (data.core_pillars && data.core_pillars.length > 0) {
-          setContextPillars(data.core_pillars);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = {};
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+      const res = await fetch('/api/profile', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        const profile = data.profile || data;
+        if (profile) {
+          setUserProfile(profile);
+          setContextHeadline(profile.headline || '');
+          setContextAudience(profile.target_audience || '');
+          setContextTone(profile.tone_of_voice || 'professional');
+          if (profile.core_pillars && profile.core_pillars.length > 0) {
+            setContextPillars(profile.core_pillars);
+          }
         }
       }
+    } catch (e) {
+      console.error('Failed to load profile:', e);
     }
   };
 
@@ -137,9 +142,15 @@ export default function IdeasPage() {
 
     setGenerating(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+
       const res = await fetch('/api/ideas/generate-daily', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ targetDate: selectedDate }),
       });
 
@@ -353,9 +364,15 @@ export default function IdeasPage() {
         ? `${contextAudience.trim()} | Topics: ${contextTopics.trim()}`
         : contextAudience.trim();
 
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+
       const res = await fetch('/api/profile', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           headline: contextHeadline.trim() || null,
           target_audience: combinedAudience || null,

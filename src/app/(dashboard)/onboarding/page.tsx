@@ -40,20 +40,24 @@ export default function OnboardingPage() {
           }
         }
 
-        if (userRes.data?.user) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', userRes.data.user.id)
-            .maybeSingle();
-
-          if (profile) {
-            if (profile.linkedin_connected) setLinkedinConnected(true);
-            if (profile.headline) setHeadline(profile.headline);
-            if (profile.target_audience) setTargetAudience(profile.target_audience);
-            if (profile.tone_of_voice) setToneOfVoice(profile.tone_of_voice);
-            if (profile.core_pillars && profile.core_pillars.length > 0) {
-              setPillars(profile.core_pillars);
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const headers: Record<string, string> = {};
+          if (session.access_token) {
+            headers['Authorization'] = `Bearer ${session.access_token}`;
+          }
+          const profRes = await fetch('/api/profile', { headers });
+          if (profRes.ok) {
+            const data = await profRes.json();
+            const profile = data.profile || data;
+            if (profile) {
+              if (profile.linkedin_connected) setLinkedinConnected(true);
+              if (profile.headline) setHeadline(profile.headline);
+              if (profile.target_audience) setTargetAudience(profile.target_audience);
+              if (profile.tone_of_voice) setToneOfVoice(profile.tone_of_voice);
+              if (profile.core_pillars && profile.core_pillars.length > 0) {
+                setPillars(profile.core_pillars);
+              }
             }
           }
         }
@@ -68,9 +72,15 @@ export default function OnboardingPage() {
     if (!linkedinUrl.trim()) return;
     setScraping(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+
       const res = await fetch('/api/apify/scrape-profile', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ linkedinUrl }),
       });
 
@@ -93,27 +103,34 @@ export default function OnboardingPage() {
   const handleComplete = async () => {
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return;
 
       const combinedAudience = postTopics.trim()
         ? `${targetAudience.trim()} | Focus Topics: ${postTopics.trim()}`
         : targetAudience.trim();
 
-      await supabase
-        .from('profiles')
-        .update({
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (session.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+
+      const res = await fetch('/api/profile', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
           headline: headline.trim() || null,
           target_audience: combinedAudience || null,
           tone_of_voice: toneOfVoice,
           core_pillars: pillars.map(p => p.trim()).filter(Boolean),
           linkedin_connected: linkedinConnected || !!linkedinUrl.trim(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', user.id);
+        }),
+      });
 
-      router.push('/ideas');
-      router.refresh();
+      if (res.ok) {
+        router.push('/ideas');
+        router.refresh();
+      }
     } catch (err) {
       console.error('Onboarding save error:', err);
     } finally {

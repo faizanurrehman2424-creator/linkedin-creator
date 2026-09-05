@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { getMasterToggles } from '@/lib/system-settings';
 
 export async function POST(request: Request) {
@@ -10,19 +10,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'AI Image generation is temporarily disabled by administrator.' }, { status: 403 });
     }
 
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const adminSupabase = await createAdminClient();
+    let user: any = null;
+
+    // Check Bearer token
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const { data: { user: tokenUser } } = await adminSupabase.auth.getUser(token);
+      if (tokenUser) user = tokenUser;
+    }
+
+    // Check cookies
+    if (!user) {
+      const supabase = await createClient();
+      const { data: { user: cookieUser } } = await supabase.auth.getUser();
+      if (cookieUser) user = cookieUser;
+    }
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized. Please sign in.' }, { status: 401 });
     }
 
-    // Check user permissions
-    const { data: profile } = await supabase
+    // Check user permissions via admin client to avoid RLS recursion
+    const { data: profile } = await adminSupabase
       .from('profiles')
       .select('can_generate_images')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
     if (profile && profile.can_generate_images === false) {
       return NextResponse.json({ error: 'Image generation is disabled for your account by the administrator.' }, { status: 403 });

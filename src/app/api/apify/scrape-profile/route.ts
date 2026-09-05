@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient as createServerClient } from '@/lib/supabase/server';
+import { createClient as createServerClient, createAdminClient } from '@/lib/supabase/server';
 import { getMasterToggles } from '@/lib/system-settings';
 
 export async function POST(request: Request) {
@@ -10,8 +10,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Apify scraping is currently disabled by the administrator.' }, { status: 403 });
     }
 
-    const supabase = await createServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const adminSupabase = await createAdminClient();
+    let user: any = null;
+
+    // Check Bearer token
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const { data: { user: tokenUser } } = await adminSupabase.auth.getUser(token);
+      if (tokenUser) user = tokenUser;
+    }
+
+    // Check cookies
+    if (!user) {
+      const supabase = await createServerClient();
+      const { data: { user: cookieUser } } = await supabase.auth.getUser();
+      if (cookieUser) user = cookieUser;
+    }
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -83,8 +98,8 @@ export async function POST(request: Request) {
         sample_posts: [],
       };
 
-      // Save to user profile
-      await supabase
+      // Save to user profile via admin client to bypass RLS recursion
+      await adminSupabase
         .from('profiles')
         .update(contextData)
         .eq('id', user.id);

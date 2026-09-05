@@ -84,17 +84,28 @@ export async function middleware(request: NextRequest) {
 
   // Check if user needs onboarding (no context data set yet)
   if (user && !isOnboardingRoute && !isAuthRoute) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('headline, target_audience')
-      .eq('id', user.id)
-      .single();
+    try {
+      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        const { createClient: createServiceClient } = await import('@supabase/supabase-js');
+        const adminClient = createServiceClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
+        const { data: profile } = await adminClient
+          .from('profiles')
+          .select('headline, target_audience')
+          .eq('id', user.id)
+          .maybeSingle();
 
-    // If profile exists but has no context, redirect to onboarding
-    if (profile && !profile.headline && !profile.target_audience) {
-      const url = request.nextUrl.clone();
-      url.pathname = '/onboarding';
-      return NextResponse.redirect(url);
+        // If profile exists but has no context, redirect to onboarding
+        if (profile && !profile.headline && !profile.target_audience) {
+          const url = request.nextUrl.clone();
+          url.pathname = '/onboarding';
+          return NextResponse.redirect(url);
+        }
+      }
+    } catch (e) {
+      console.error('Middleware profile check error:', e);
     }
   }
 
