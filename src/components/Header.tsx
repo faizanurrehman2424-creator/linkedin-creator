@@ -129,14 +129,16 @@ export function Header() {
   if (isAuthPage) {
     return (
       <header className="auth-header-minimal">
-        <Link href="/login" className="brand-logo-minimal">
-          <span className="brand-text-single">LinkedIn AI Content Engine</span>
+        <Link href="/login" className="brand-logo-lockup">
+          <div className="logo-icon-box">
+            <span className="logo-in">in</span>
+            <div className="logo-spark" />
+          </div>
+          <div className="logo-text-group">
+            <span className="logo-brand-title">LINKEDIN</span>
+            <span className="logo-brand-badge">AI ENGINE</span>
+          </div>
         </Link>
-        <div className="auth-header-actions">
-          <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
-            {isDark ? <Sun size={19} /> : <Moon size={19} />}
-          </button>
-        </div>
       </header>
     );
   }
@@ -145,8 +147,15 @@ export function Header() {
     <header className="glass-card header-container">
       <div className="header-content">
         <div className="header-left">
-          <Link href="/ideas" className="brand-logo">
-            <strong>LinkedIn AI Engine</strong>
+          <Link href="/ideas" className="brand-logo-lockup">
+            <div className="logo-icon-box sm">
+              <span className="logo-in sm">in</span>
+              <div className="logo-spark" />
+            </div>
+            <div className="logo-text-group">
+              <span className="logo-brand-title sm">LINKEDIN</span>
+              <span className="logo-brand-badge sm">AI ENGINE</span>
+            </div>
           </Link>
 
           {/* Desktop Navigation Links - only when authenticated */}
@@ -183,10 +192,12 @@ export function Header() {
             {isDark ? <Sun size={19} /> : <Moon size={19} />}
           </button>
 
-          {/* Admin Icon */}
-          <Link href="/admin/login" className="admin-btn" title="Admin Panel">
-            <Shield size={18} />
-          </Link>
+          {/* Admin Icon - Only rendered for authenticated administrators */}
+          {userRole === 'admin' && (
+            <Link href="/admin/dashboard" className="admin-btn" title="Admin Dashboard">
+              <Shield size={18} />
+            </Link>
+          )}
 
           {/* Mobile hamburger */}
           <button 
@@ -273,13 +284,15 @@ export function Header() {
             >
               <Settings size={18} /> Settings
             </Link>
-            <Link 
-              href="/admin/login" 
-              className="mobile-nav-link"
-              onClick={() => setIsMobileNavOpen(false)}
-            >
-              <Shield size={18} /> Admin Panel
-            </Link>
+            {userRole === 'admin' && (
+              <Link 
+                href="/admin/dashboard" 
+                className="mobile-nav-link"
+                onClick={() => setIsMobileNavOpen(false)}
+              >
+                <Shield size={18} /> Admin Panel
+              </Link>
+            )}
             <div className="mobile-nav-divider" />
             {currentUser ? (
               <button className="mobile-nav-link text-danger" onClick={handleLogout}>
@@ -311,25 +324,81 @@ export function Header() {
           padding: 1.25rem 2rem;
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          justify-content: flex-start;
           z-index: 50;
         }
-        .brand-logo-minimal {
-          display: flex;
+        .brand-logo-lockup {
+          display: inline-flex;
           align-items: center;
+          gap: 0.75rem;
           text-decoration: none;
-          white-space: nowrap;
         }
-        .brand-text-single {
-          font-size: 1.15rem;
-          font-weight: 700;
-          letter-spacing: -0.025em;
-          color: var(--color-brand);
-          white-space: nowrap;
-        }
-        .auth-header-actions {
+        .logo-icon-box {
+          width: 36px;
+          height: 36px;
+          background: linear-gradient(135deg, #0a66c2 0%, #004182 100%);
+          border-radius: 8px;
           display: flex;
           align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 12px rgba(10, 102, 194, 0.35);
+          position: relative;
+          flex-shrink: 0;
+        }
+        .logo-icon-box.sm {
+          width: 30px;
+          height: 30px;
+          border-radius: 7px;
+        }
+        .logo-in {
+          color: #ffffff;
+          font-weight: 800;
+          font-size: 1.15rem;
+          font-family: var(--font-outfit), sans-serif;
+          letter-spacing: -0.04em;
+          line-height: 1;
+        }
+        .logo-in.sm {
+          font-size: 0.95rem;
+        }
+        .logo-spark {
+          position: absolute;
+          top: 2px;
+          right: 2px;
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: #38bdf8;
+          box-shadow: 0 0 6px #38bdf8;
+        }
+        .logo-text-group {
+          display: flex;
+          align-items: baseline;
+          gap: 0.45rem;
+          white-space: nowrap;
+        }
+        .logo-brand-title {
+          font-size: 1.15rem;
+          font-weight: 800;
+          letter-spacing: -0.03em;
+          color: var(--color-text-primary);
+        }
+        .logo-brand-title.sm {
+          font-size: 1.05rem;
+        }
+        .logo-brand-badge {
+          font-size: 0.65rem;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          padding: 0.15rem 0.4rem;
+          border-radius: 4px;
+          background: rgba(59, 130, 246, 0.12);
+          color: var(--color-brand);
+          border: 1px solid rgba(59, 130, 246, 0.25);
+        }
+        .logo-brand-badge.sm {
+          font-size: 0.6rem;
+          padding: 0.1rem 0.35rem;
         }
         .admin-access-btn {
           display: inline-flex;

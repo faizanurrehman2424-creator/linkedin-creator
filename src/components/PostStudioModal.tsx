@@ -164,6 +164,10 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
   };
 
   const handlePublishLinkedIn = async () => {
+    if (!userProfile?.linkedin_connected) {
+      toast.info('Please connect your LinkedIn account in Settings first to publish directly.');
+      return;
+    }
     setPublishingLinkedIn(true);
     try {
       const authHeaders = await getAuthHeaders();
@@ -183,7 +187,7 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
       const updated = { ...editedIdea, status: 'published' };
       setEditedIdea(updated);
       onSave(updated);
-      toast.success('Post published live to your LinkedIn profile!');
+      toast.success('Post published live to your LinkedIn profile.');
     } catch (err: any) {
       console.error('LinkedIn publishing error:', err);
       toast.error(err.message || 'Failed to publish to LinkedIn.');
@@ -239,13 +243,17 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
     setEditedIdea(updatedIdea);
     onSave(updatedIdea);
     setSaving(false);
-
     if (targetStatus === 'liked') {
       toast.success('Saved idea to Liked.');
     } else if (targetStatus === 'scheduled') {
-      toast.success(`Post scheduled for ${scheduleDate} at ${scheduleTime}.`);
-    } else if (targetStatus === 'fresh' && editedIdea.status === 'liked') {
+      toast.success('Post scheduled for content calendar.');
+    } else if (targetStatus === 'trashed') {
+      toast.info('Idea moved to Trash.');
+      onClose();
+    } else if (targetStatus === 'fresh') {
       toast.info('Removed idea from Liked.');
+    } else {
+      toast.success('Idea saved.');
     }
   };
 
@@ -254,11 +262,39 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
     handleSave(nextStatus);
   };
 
-  const copyToClipboard = (text: string, type: string) => {
-    navigator.clipboard.writeText(text);
-    setCopied(type);
-    toast.success(type === 'all' ? 'Full post copied to clipboard.' : type === 'publish' ? 'Post copied for publishing.' : 'Copied to clipboard.');
-    setTimeout(() => setCopied(null), 2000);
+  const copyToClipboard = async (text: string, type: string) => {
+    try {
+      if (typeof window !== 'undefined' && window.isSecureContext && navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        textArea.setAttribute('readonly', '');
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        if (!successful) {
+          throw new Error('Fallback clipboard copy failed');
+        }
+      }
+      setCopied(type);
+      toast.success(
+        type === 'all'
+          ? 'Full post copied to clipboard.'
+          : type === 'publish'
+          ? 'Post copied for publishing.'
+          : 'Copied to clipboard.'
+      );
+      setTimeout(() => setCopied(null), 2000);
+    } catch (err) {
+      console.error('Copy to clipboard failed:', err);
+      toast.error('Could not copy to clipboard. Please copy manually.');
+    }
   };
 
   const fullPostText = `${editedIdea.hook_options[editedIdea.selected_hook_index]}\n\n${editedIdea.caption_body}\n\n${editedIdea.hashtags.join(' ')}`;

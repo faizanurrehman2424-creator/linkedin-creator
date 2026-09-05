@@ -64,7 +64,7 @@ export default function AdminLoginPage() {
               <User size={17} className="input-icon" />
               <input
                 type="text"
-                placeholder="e.g. faizan or admin@company.com"
+                placeholder="Administrator identifier"
                 className="input-field with-icon"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
@@ -103,7 +103,7 @@ export default function AdminLoginPage() {
         <div className="admin-card-footer">
           <Link href="/login" className="back-link">
             <ArrowLeft size={15} />
-            <span>Return to Candidate Login</span>
+            <span>Return to Client Login</span>
           </Link>
         </div>
       </div>

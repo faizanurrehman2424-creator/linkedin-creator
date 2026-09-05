@@ -13,7 +13,9 @@ import {
   Share2, 
   Calendar, 
   TrendingUp,
-  Shield 
+  Shield,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -30,11 +32,26 @@ function AuthContent() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [isDark, setIsDark] = useState(true);
 
   // Interactive Live Showcase State
   const [activeHookIndex, setActiveHookIndex] = useState(0);
 
   const supabase = createClient();
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const initialDark = savedTheme ? savedTheme === 'dark' : prefersDark;
+    setIsDark(initialDark);
+  }, []);
+
+  const toggleTheme = () => {
+    const newDark = !isDark;
+    setIsDark(newDark);
+    document.documentElement.setAttribute('data-theme', newDark ? 'dark' : 'light');
+    localStorage.setItem('theme', newDark ? 'dark' : 'light');
+  };
 
   useEffect(() => {
     if (searchParams.get('disabled') === 'true') {
@@ -188,6 +205,19 @@ function AuthContent() {
       {/* Right: Glassmorphic Auth Form */}
       <div className="form-column">
         <div className="glass-card auth-card">
+          <div className="auth-card-top-bar">
+            <span className="card-top-tag">SECURE ACCESS</span>
+            <button 
+              type="button" 
+              onClick={toggleTheme} 
+              className="card-theme-toggle" 
+              aria-label="Toggle theme"
+              title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {isDark ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
+          </div>
+
           <div className="auth-header-copy">
             <h2>
               {mode === 'reset' 
@@ -492,6 +522,39 @@ function AuthContent() {
           display: flex;
           flex-direction: column;
           gap: 1.5rem;
+        }
+        .auth-card-top-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: -0.5rem;
+        }
+        .card-top-tag {
+          font-size: 0.65rem;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          color: var(--color-brand);
+          background: rgba(59, 130, 246, 0.1);
+          border: 1px solid rgba(59, 130, 246, 0.25);
+          padding: 0.15rem 0.5rem;
+          border-radius: 4px;
+        }
+        .card-theme-toggle {
+          background: rgba(148, 163, 184, 0.1);
+          border: 1px solid var(--color-border);
+          color: var(--color-text-secondary);
+          padding: 0.4rem;
+          border-radius: 50%;
+          cursor: pointer;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+        }
+        .card-theme-toggle:hover {
+          background: rgba(148, 163, 184, 0.2);
+          color: var(--color-text-primary);
+          transform: rotate(15deg);
         }
         .auth-tabs {
           display: grid;

@@ -91,13 +91,21 @@ export default function OnboardingPage() {
       if (res.ok && data.profile) {
         if (data.profile.headline) setHeadline(data.profile.headline);
         if (data.profile.target_audience) setTargetAudience(data.profile.target_audience);
+        if (data.profile.tone_of_voice) setToneOfVoice(data.profile.tone_of_voice);
         if (data.profile.core_pillars && data.profile.core_pillars.length > 0) {
           setPillars(data.profile.core_pillars);
         }
         setScraped(true);
-        toast.success('Profile details extracted successfully.');
+
+        if (data.source === 'ai_enriched') {
+          toast.success('Profile context and core pillars enriched with AI intelligence.');
+        } else if (data.source === 'apify') {
+          toast.success('Profile details extracted from LinkedIn.');
+        } else {
+          toast.info('Could not access full private profile. Basic details set; please refine.');
+        }
       } else {
-        toast.error(data.error || 'Failed to auto-extract profile details.');
+        toast.error(data.error || 'Failed to extract profile details.');
       }
     } catch (err: any) {
       console.error('Scrape error:', err);

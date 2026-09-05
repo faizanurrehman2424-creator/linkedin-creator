@@ -166,14 +166,6 @@ export default function IdeasPage() {
         const data = await res.json();
         const loadedIdeas = data.ideas || [];
         setIdeas(loadedIdeas);
-
-        // Daily morning generation check: only on fresh tab on first visit of day
-        const today = getTodayStr();
-        const hasTodayIdeas = loadedIdeas.some((i: any) => i.target_date === today);
-        if (activeTab === 'fresh' && !hasTodayIdeas && canGenerate && !hasAttemptedAutoGen.current && userProfile) {
-          hasAttemptedAutoGen.current = true;
-          triggerDailyMorningGeneration(today);
-        }
       } else {
         const err = await res.text();
         console.error('fetchIdeas failed:', err);
@@ -186,6 +178,56 @@ export default function IdeasPage() {
       setLoading(false);
     }
   };
+
+  const canGenerate = masterIdeaGen && (!userProfile || userProfile.can_generate_ideas !== false);
+
+  // Strictly check and trigger daily morning generation once per day upon first login of the day
+  useEffect(() => {
+    let isCancelled = false;
+
+    const checkDailyLoginGen = async () => {
+      if (!userProfile || !canGenerate || !masterIdeaGen) return;
+      if (userProfile.can_generate_ideas === false) return;
+      if (hasAttemptedAutoGen.current) return;
+
+      const today = getTodayStr();
+      const storageKey = `daily_autogen_${userProfile.id || 'me'}_${today}`;
+      if (typeof window !== 'undefined' && localStorage.getItem(storageKey)) {
+        hasAttemptedAutoGen.current = true;
+        return;
+      }
+
+      hasAttemptedAutoGen.current = true;
+
+      try {
+        const headers = await getAuthHeaders();
+        // Specifically check if ideas already exist for today's date
+        const checkRes = await fetch(`/api/ideas?status=all&targetDate=${today}`, { headers, cache: 'no-store' });
+        if (checkRes.ok) {
+          const checkData = await checkRes.json();
+          const todayIdeas = checkData.ideas || [];
+          if (todayIdeas.length > 0) {
+            if (typeof window !== 'undefined') localStorage.setItem(storageKey, 'true');
+            return;
+          }
+        }
+
+        if (isCancelled) return;
+
+        // No ideas exist for today, trigger morning batch once
+        if (typeof window !== 'undefined') localStorage.setItem(storageKey, 'true');
+        await triggerDailyMorningGeneration(today);
+      } catch (e) {
+        console.error('Daily login generation check error:', e);
+      }
+    };
+
+    checkDailyLoginGen();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [userProfile?.id, canGenerate, masterIdeaGen]);
 
   const triggerDailyMorningGeneration = async (todayDate: string) => {
     if (!masterIdeaGen || (userProfile && userProfile.can_generate_ideas === false)) {
@@ -561,8 +603,6 @@ export default function IdeasPage() {
     const key = pillar.toLowerCase().replace(/\s+/g, '_');
     return PILLAR_COLORS[key] || PILLAR_COLORS.default;
   };
-
-  const canGenerate = masterIdeaGen && (!userProfile || userProfile.can_generate_ideas !== false);
 
   return (
     <div className="ideas-page">
