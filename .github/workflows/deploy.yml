@@ -4,17 +4,32 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to Hetzner Server via SSH
+      - name: Deploy with SSH Key
+        if: "${{ secrets.SERVER_SSH_KEY != '' }}"
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script: |
+            cd /var/www/linkedin-creator
+            git pull origin main
+            docker compose up -d --build
+            docker image prune -f
+
+      - name: Deploy with Password
+        if: "${{ secrets.SERVER_SSH_KEY == '' && secrets.SERVER_PASSWORD != '' }}"
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ secrets.SERVER_PORT || 22 }}
           script: |
