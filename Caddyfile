@@ -1,0 +1,9 @@
+# Replace with your actual domain
+# yourdomain.com {
+#     reverse_proxy web:3000
+# }
+
+# For local testing via Docker Compose, Caddy will listen on 80
+:80 {
+    reverse_proxy web:3000
+}
