@@ -18,7 +18,10 @@ jobs:
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ secrets.SERVER_PORT || 22 }}
           script: |
+            set -e
             cd /var/www/linkedin-creator
-            git pull origin main
-            docker compose up -d --build
+            git fetch origin main
+            git reset --hard origin/main
+            docker compose build
+            docker compose up -d --force-recreate
             docker image prune -f

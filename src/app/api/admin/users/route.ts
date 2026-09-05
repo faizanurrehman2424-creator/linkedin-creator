@@ -21,6 +21,19 @@ export async function GET(request: Request) {
 
     if (error) throw error;
 
+    // Fetch auth users to get ban status
+    const authUsersMap: Record<string, any> = {};
+    try {
+      const { data: authData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+      if (authData?.users) {
+        for (const au of authData.users) {
+          authUsersMap[au.id] = au;
+        }
+      }
+    } catch (authErr) {
+      console.warn('Could not list auth users:', authErr);
+    }
+
     // Aggregate idea and media counts per user
     const { data: allIdeas } = await supabase
       .from('content_ideas')
@@ -39,13 +52,20 @@ export async function GET(request: Request) {
       }
     }
 
-    const enrichedUsers = (users || []).map(u => ({
-      ...u,
-      ideas_count: ideasByUser[u.id]?.total || 0,
-      images_count: ideasByUser[u.id]?.images || 0,
-      videos_count: ideasByUser[u.id]?.videos || 0,
-      published_count: ideasByUser[u.id]?.published || 0,
-    }));
+    const enrichedUsers = (users || []).map(u => {
+      const authUser = authUsersMap[u.id];
+      const isBanned = authUser?.banned_until ? new Date(authUser.banned_until) > new Date() : false;
+      const isActive = u.is_active !== undefined && u.is_active !== null ? Boolean(u.is_active) : !isBanned;
+
+      return {
+        ...u,
+        is_active: isActive,
+        ideas_count: ideasByUser[u.id]?.total || 0,
+        images_count: ideasByUser[u.id]?.images || 0,
+        videos_count: ideasByUser[u.id]?.videos || 0,
+        published_count: ideasByUser[u.id]?.published || 0,
+      };
+    });
 
     return NextResponse.json({ users: enrichedUsers });
   } catch (error: any) {
@@ -71,14 +91,36 @@ export async function PATCH(request: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    const { error } = await supabase
-      .from('profiles')
-      .update({ is_active: isActive })
-      .eq('id', userId);
+    // 1. Update Supabase Auth user ban status so login is blocked / allowed immediately
+    try {
+      if (isActive) {
+        await supabase.auth.admin.updateUserById(userId, {
+          ban_duration: 'none',
+          user_metadata: { is_active: true },
+          app_metadata: { is_active: true }
+        });
+      } else {
+        await supabase.auth.admin.updateUserById(userId, {
+          ban_duration: '876000h',
+          user_metadata: { is_active: false },
+          app_metadata: { is_active: false }
+        });
+      }
+    } catch (banErr: any) {
+      console.warn('Supabase auth ban update error:', banErr);
+    }
 
-    if (error) throw error;
+    // 2. Also attempt to update profiles table if column exists
+    try {
+      await supabase
+        .from('profiles')
+        .update({ is_active: isActive })
+        .eq('id', userId);
+    } catch (profErr) {
+      // Ignore if is_active column does not exist on profiles
+    }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, is_active: isActive });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

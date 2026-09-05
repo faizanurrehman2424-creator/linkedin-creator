@@ -86,7 +86,9 @@ export async function POST(request: Request) {
       { expiresIn: '1h' }
     );
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+    const host = request.headers.get('x-forwarded-host') || request.headers.get('host');
+    const proto = request.headers.get('x-forwarded-proto') || 'http';
+    const appUrl = host ? `${proto}://${host}` : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
     const resetLink = `${appUrl}/set-password?token=${resetToken}&type=reset`;
 
     // Send email

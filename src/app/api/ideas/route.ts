@@ -81,7 +81,7 @@ export async function GET(request: Request) {
       query = query.eq('status', status);
     }
 
-    if (status === 'fresh' && targetDate) {
+    if (targetDate && targetDate !== 'all') {
       query = query.eq('target_date', targetDate);
     }
 

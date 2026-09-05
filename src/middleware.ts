@@ -91,24 +91,23 @@ export async function middleware(request: NextRequest) {
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.SUPABASE_SERVICE_ROLE_KEY
         );
-        const { data: profile } = await adminClient
-          .from('profiles')
-          .select('headline, target_audience, is_active')
-          .eq('id', user.id)
-          .maybeSingle();
-
-        // Check if account is disabled
-        if (profile && profile.is_active === false) {
-          // Send to login with a query param, let client handle signout if needed
+        // Check if account is disabled via auth metadata or banned status
+        const isAuthDisabled = user.app_metadata?.is_active === false || user.user_metadata?.is_active === false;
+        if (isAuthDisabled) {
           const url = request.nextUrl.clone();
           url.pathname = '/login';
           url.searchParams.set('disabled', 'true');
-          
-          // We must clear the session cookies to actually log them out
           const response = NextResponse.redirect(url);
-          response.cookies.delete('sb-' + new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).hostname.split('.')[0] + '-auth-token');
+          const projectRef = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).hostname.split('.')[0];
+          response.cookies.delete(`sb-${projectRef}-auth-token`);
           return response;
         }
+
+        const { data: profile } = await adminClient
+          .from('profiles')
+          .select('headline, target_audience')
+          .eq('id', user.id)
+          .maybeSingle();
 
         // If profile exists but has no context, redirect to onboarding
         if (profile && !profile.headline && !profile.target_audience && !isOnboardingRoute) {

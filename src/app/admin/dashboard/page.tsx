@@ -164,14 +164,14 @@ export default function AdminDashboardPage() {
         if (selectedUser?.id === userId) {
           setSelectedUser({ ...selectedUser, is_active: isActive });
         }
-        showSuccess(`User status updated successfully.`);
+        toast.success('User status updated successfully.');
       } else {
-         const data = await res.json();
-         setError(`Error updating user: ${data.error || 'Unknown error'}`);
+        const data = await res.json();
+        toast.error(data.error || 'Error updating user');
       }
     } catch (e: any) {
       console.error(e);
-      setError('Failed to update user status');
+      toast.error('Failed to update user status');
     } finally {
       setProcessingId(null);
     }
@@ -188,7 +188,7 @@ export default function AdminDashboardPage() {
 
       if (res.ok) {
         setPendingRequests(pendingRequests.filter(r => r.id !== requestId));
-        showSuccess(`Password request ${action === 'approve' ? 'approved' : 'declined'}.`);
+        toast.success(`Password request ${action === 'approve' ? 'approved' : 'declined'}.`);
       }
     } catch (e) {
       console.error(e);

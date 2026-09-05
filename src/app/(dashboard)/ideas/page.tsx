@@ -37,7 +37,8 @@ export default function IdeasPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState('fresh');
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState('all');
+  const [isDailyGenerating, setIsDailyGenerating] = useState(false);
   const [selectedIdea, setSelectedIdea] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [masterIdeaGen, setMasterIdeaGen] = useState(true);
@@ -132,17 +133,30 @@ export default function IdeasPage() {
     }
   };
 
+  const getTodayStr = () => new Date().toISOString().split('T')[0];
+
   const fetchIdeas = async () => {
     setLoading(true);
     try {
       const headers = await getAuthHeaders();
       const params = new URLSearchParams({ status: activeTab });
-      if (activeTab === 'fresh') params.set('targetDate', selectedDate);
+      if (activeTab === 'fresh' && selectedDate !== 'all') {
+        params.set('targetDate', selectedDate);
+      }
 
       const res = await fetch(`/api/ideas?${params.toString()}`, { headers, cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
-        setIdeas(data.ideas || []);
+        const loadedIdeas = data.ideas || [];
+        setIdeas(loadedIdeas);
+
+        // Daily morning generation check: only on fresh tab on first visit of day
+        const today = getTodayStr();
+        const hasTodayIdeas = loadedIdeas.some((i: any) => i.target_date === today);
+        if (activeTab === 'fresh' && !hasTodayIdeas && canGenerate && !hasAttemptedAutoGen.current && userProfile) {
+          hasAttemptedAutoGen.current = true;
+          triggerDailyMorningGeneration(today);
+        }
       } else {
         const err = await res.text();
         console.error('fetchIdeas failed:', err);
@@ -156,7 +170,39 @@ export default function IdeasPage() {
     }
   };
 
-  const handleGenerate = async () => {
+  const triggerDailyMorningGeneration = async (todayDate: string) => {
+    if (!masterIdeaGen || (userProfile && userProfile.can_generate_ideas === false)) {
+      return;
+    }
+    setIsDailyGenerating(true);
+    try {
+      const authHeaders = await getAuthHeaders();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeaders };
+
+      const res = await fetch('/api/ideas/generate-daily', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ targetDate: todayDate }),
+      });
+
+      if (res.ok) {
+        toast.success('Your 15 daily LinkedIn ideas for today are ready.');
+        const params = new URLSearchParams({ status: activeTab });
+        if (selectedDate !== 'all') params.set('targetDate', selectedDate);
+        const refetch = await fetch(`/api/ideas?${params.toString()}`, { headers, cache: 'no-store' });
+        if (refetch.ok) {
+          const d = await refetch.json();
+          setIdeas(d.ideas || []);
+        }
+      }
+    } catch (err) {
+      console.error('Daily generation error:', err);
+    } finally {
+      setIsDailyGenerating(false);
+    }
+  };
+
+  const handleGenerate = async (customDate?: string) => {
     if (!masterIdeaGen) {
       toast.error('Idea generation is disabled system-wide by administrator.');
       return;
@@ -166,6 +212,7 @@ export default function IdeasPage() {
       return;
     }
 
+    const genDate = customDate && customDate !== 'all' ? customDate : getTodayStr();
     setGenerating(true);
     try {
       const authHeaders = await getAuthHeaders();
@@ -174,7 +221,7 @@ export default function IdeasPage() {
       const res = await fetch('/api/ideas/generate-daily', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ targetDate: selectedDate }),
+        body: JSON.stringify({ targetDate: genDate }),
       });
 
       const data = await res.json();
@@ -449,7 +496,8 @@ export default function IdeasPage() {
   };
 
   const changeDate = (delta: number) => {
-    const d = new Date(selectedDate);
+    const base = selectedDate === 'all' ? getTodayStr() : selectedDate;
+    const d = new Date(base + 'T00:00:00');
     d.setDate(d.getDate() + delta);
     setSelectedDate(d.toISOString().split('T')[0]);
   };
@@ -460,7 +508,7 @@ export default function IdeasPage() {
     return Math.max(0, Math.round(24 - diffHours));
   };
 
-  const isToday = selectedDate === new Date().toISOString().split('T')[0];
+  const isToday = selectedDate === getTodayStr();
 
   const getPillarColor = (pillar: string) => {
     const key = pillar.toLowerCase().replace(/\s+/g, '_');
@@ -468,13 +516,6 @@ export default function IdeasPage() {
   };
 
   const canGenerate = masterIdeaGen && (!userProfile || userProfile.can_generate_ideas !== false);
-
-  useEffect(() => {
-    if (!loading && activeTab === 'fresh' && isToday && ideas.length === 0 && userProfile && canGenerate && !hasAttemptedAutoGen.current) {
-      hasAttemptedAutoGen.current = true;
-      handleGenerate();
-    }
-  }, [loading, activeTab, isToday, ideas.length, userProfile, canGenerate]);
 
   return (
     <div className="ideas-page">
@@ -506,20 +547,56 @@ export default function IdeasPage() {
         </button>
       </div>
 
-      {/* Date Navigation (only for Fresh) */}
+      {/* Date Navigation & View Mode (only for Fresh) */}
       {activeTab === 'fresh' && (
-        <div className="date-nav">
-          <button className="date-nav-btn" onClick={() => changeDate(-1)}>
-            <ChevronLeft size={18} />
-          </button>
-          <div className="date-display">
-            <Calendar size={16} />
-            <span>{isToday ? 'Today' : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
-            <span className="date-value">{selectedDate}</span>
+        <div className="date-filter-container">
+          <div className="filter-mode-buttons">
+            <button
+              type="button"
+              className={`mode-btn ${selectedDate === 'all' ? 'active' : ''}`}
+              onClick={() => setSelectedDate('all')}
+            >
+              <span>All Ideas</span>
+              <span className="badge-pill">{ideas.length}</span>
+            </button>
+            <button
+              type="button"
+              className={`mode-btn ${selectedDate === getTodayStr() ? 'active' : ''}`}
+              onClick={() => setSelectedDate(getTodayStr())}
+            >
+              <span>Today</span>
+            </button>
           </div>
-          <button className="date-nav-btn" onClick={() => changeDate(1)}>
-            <ChevronRight size={18} />
-          </button>
+
+          <div className="date-nav">
+            <button
+              type="button"
+              className="date-nav-btn"
+              onClick={() => changeDate(-1)}
+              title="Previous Day"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <div className="date-display">
+              <Calendar size={16} />
+              <span>
+                {selectedDate === 'all'
+                  ? 'All Content History'
+                  : selectedDate === getTodayStr()
+                  ? 'Today'
+                  : new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+              </span>
+              {selectedDate !== 'all' && <span className="date-value">{selectedDate}</span>}
+            </div>
+            <button
+              type="button"
+              className="date-nav-btn"
+              onClick={() => changeDate(1)}
+              title="Next Day"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
         </div>
       )}
 
@@ -528,7 +605,7 @@ export default function IdeasPage() {
         <div>
           <h1>{STATUS_TABS.find(t => t.key === activeTab)?.label || 'Ideas'}</h1>
           <p className="text-muted">
-            {activeTab === 'fresh' && `Your daily 15 ideas for ${isToday ? 'today' : selectedDate}.`}
+            {activeTab === 'fresh' && (selectedDate === 'all' ? 'Your entire library of fresh LinkedIn ideas.' : `Ideas for ${selectedDate === getTodayStr() ? 'today' : selectedDate}.`)}
             {activeTab === 'liked' && 'Curated ideas saved for future polishing and scheduling.'}
             {activeTab === 'scheduled' && 'Upcoming scheduled LinkedIn posts.'}
             {activeTab === 'published' && 'Posts successfully published to LinkedIn.'}
@@ -538,12 +615,12 @@ export default function IdeasPage() {
         {activeTab === 'fresh' && (
           <button
             className="btn-primary flex-center generate-btn"
-            onClick={handleGenerate}
-            disabled={generating || !canGenerate}
+            onClick={() => handleGenerate(selectedDate !== 'all' ? selectedDate : getTodayStr())}
+            disabled={generating || isDailyGenerating || !canGenerate}
             title={!masterIdeaGen ? 'Idea generation disabled system-wide' : userProfile && !userProfile.can_generate_ideas ? 'Idea generation disabled for your account' : ''}
           >
             {generating ? <Loader2 size={16} className="spin" /> : <Wand2 size={16} />}
-            <span>{generating ? 'Generating 15 Ideas...' : 'Generate 15 Ideas'}</span>
+            <span>{generating ? 'Generating 15 Ideas...' : 'Generate 15 More Ideas'}</span>
           </button>
         )}
       </div>
@@ -601,6 +678,11 @@ export default function IdeasPage() {
                     <span className="pillar-tag" style={{ background: `${getPillarColor(idea.pillar)}18`, color: getPillarColor(idea.pillar), borderColor: `${getPillarColor(idea.pillar)}35` }}>
                       {idea.pillar?.replace(/_/g, ' ') || 'General'}
                     </span>
+                    {idea.target_date && (
+                      <span className="date-badge">
+                        {idea.target_date}
+                      </span>
+                    )}
                   </div>
 
                   <div className="card-actions">
@@ -751,6 +833,25 @@ export default function IdeasPage() {
             <button className="bulk-close-btn" onClick={() => setSelectedIdeaIds([])} title="Cancel Selection">
               <X size={16} />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Daily morning generation full-screen loading overlay */}
+      {isDailyGenerating && (
+        <div className="daily-modal-overlay">
+          <div className="daily-modal-card glass-card">
+            <div className="daily-spinner-wrap">
+              <Loader2 size={36} className="spin" />
+            </div>
+            <h2>Generating Today&apos;s 15 LinkedIn Ideas</h2>
+            <p className="text-muted">
+              Analyzing your profile context and defined pillars to curate 15 high-converting post ideas for today...
+            </p>
+            <div className="daily-progress-track">
+              <div className="daily-progress-bar" />
+            </div>
+            <span className="daily-notice">Automatic daily generation on your first login of the day.</span>
           </div>
         </div>
       )}
@@ -938,19 +1039,74 @@ export default function IdeasPage() {
           border-color: var(--color-brand);
         }
 
+        /* Date Filter Container & Mode Buttons */
+        .date-filter-container {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 1rem;
+          flex-wrap: wrap;
+        }
+        .filter-mode-buttons {
+          display: flex;
+          gap: 0.5rem;
+          background: rgba(148, 163, 184, 0.08);
+          padding: 0.25rem;
+          border-radius: var(--radius-lg);
+          border: 1px solid var(--color-border);
+        }
+        .mode-btn {
+          display: flex;
+          align-items: center;
+          gap: 0.45rem;
+          padding: 0.4rem 0.85rem;
+          border-radius: var(--radius-md);
+          font-size: 0.825rem;
+          font-weight: 600;
+          color: var(--color-text-secondary);
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          transition: all 0.18s ease;
+        }
+        .mode-btn:hover {
+          color: var(--color-text-primary);
+        }
+        .mode-btn.active {
+          background: var(--color-surface);
+          color: var(--color-brand);
+          box-shadow: var(--shadow-sm);
+        }
+        .badge-pill {
+          font-size: 0.72rem;
+          padding: 0.1rem 0.45rem;
+          border-radius: 999px;
+          background: rgba(59, 130, 246, 0.12);
+          color: var(--color-brand);
+        }
+        .date-badge {
+          font-size: 0.725rem;
+          font-family: var(--font-mono);
+          color: var(--color-text-muted);
+          background: rgba(148, 163, 184, 0.08);
+          padding: 0.2rem 0.5rem;
+          border-radius: var(--radius-sm);
+          border: 1px solid var(--color-border);
+        }
+
         /* Date Nav */
         .date-nav {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 1rem;
-          padding: 0.75rem;
+          gap: 0.85rem;
+          padding: 0.5rem 0.85rem;
           background: var(--color-surface);
           border: 1px solid var(--color-border);
           border-radius: var(--radius-lg);
         }
         .date-nav-btn {
-          padding: 0.4rem;
+          padding: 0.35rem;
           border-radius: var(--radius-md);
           color: var(--color-text-secondary);
           background: none;
@@ -965,15 +1121,84 @@ export default function IdeasPage() {
         .date-display {
           display: flex;
           align-items: center;
-          gap: 0.5rem;
-          font-size: 0.95rem;
+          gap: 0.45rem;
+          font-size: 0.9rem;
           font-weight: 600;
           color: var(--color-text-primary);
         }
         .date-value {
-          font-size: 0.8rem;
+          font-size: 0.78rem;
           color: var(--color-text-muted);
           font-weight: 400;
+        }
+
+        /* Daily Generation Overlay */
+        .daily-modal-overlay {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(15, 23, 42, 0.7);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          padding: 1.5rem;
+          animation: fadeIn 0.25s ease-out;
+        }
+        .daily-modal-card {
+          width: 100%;
+          max-width: 480px;
+          padding: 2.5rem 2rem;
+          text-align: center;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 1.15rem;
+          border-radius: var(--radius-xl);
+          background: var(--color-surface);
+          border: 1px solid var(--color-brand-border);
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+        .daily-spinner-wrap {
+          width: 60px;
+          height: 60px;
+          border-radius: 50%;
+          background: rgba(59, 130, 246, 0.12);
+          color: var(--color-brand);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .daily-modal-card h2 {
+          font-size: 1.45rem;
+          font-weight: 700;
+          letter-spacing: -0.02em;
+          color: var(--color-text-primary);
+          margin: 0;
+        }
+        .daily-progress-track {
+          width: 100%;
+          height: 6px;
+          background: rgba(148, 163, 184, 0.15);
+          border-radius: 999px;
+          overflow: hidden;
+        }
+        .daily-progress-bar {
+          height: 100%;
+          width: 60%;
+          background: var(--color-brand);
+          border-radius: 999px;
+          animation: progressIndeterminate 1.8s ease-in-out infinite;
+        }
+        @keyframes progressIndeterminate {
+          0% { transform: translateX(-100%); width: 30%; }
+          50% { width: 60%; }
+          100% { transform: translateX(250%); width: 30%; }
+        }
+        .daily-notice {
+          font-size: 0.775rem;
+          color: var(--color-text-muted);
         }
 
         /* Page Header */
