@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { PostStudioModal } from '@/components/PostStudioModal';
 import {
@@ -55,6 +55,7 @@ export default function IdeasPage() {
     'Industry Trends', 'Recruiter War Stories', 'Educational Frameworks'
   ]);
   const [contextSaving, setContextSaving] = useState(false);
+  const hasAttemptedAutoGen = useRef(false);
 
   const supabase = createClient();
   const toast = useToast();
@@ -112,7 +113,7 @@ export default function IdeasPage() {
   const fetchProfile = async () => {
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch('/api/profile', { headers });
+      const res = await fetch('/api/profile', { headers, cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         const profile = data.profile || data;
@@ -138,7 +139,7 @@ export default function IdeasPage() {
       const params = new URLSearchParams({ status: activeTab });
       if (activeTab === 'fresh') params.set('targetDate', selectedDate);
 
-      const res = await fetch(`/api/ideas?${params.toString()}`, { headers });
+      const res = await fetch(`/api/ideas?${params.toString()}`, { headers, cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setIdeas(data.ideas || []);
@@ -467,6 +468,13 @@ export default function IdeasPage() {
   };
 
   const canGenerate = masterIdeaGen && (!userProfile || userProfile.can_generate_ideas !== false);
+
+  useEffect(() => {
+    if (!loading && activeTab === 'fresh' && isToday && ideas.length === 0 && userProfile && canGenerate && !hasAttemptedAutoGen.current) {
+      hasAttemptedAutoGen.current = true;
+      handleGenerate();
+    }
+  }, [loading, activeTab, isToday, ideas.length, userProfile, canGenerate]);
 
   return (
     <div className="ideas-page">

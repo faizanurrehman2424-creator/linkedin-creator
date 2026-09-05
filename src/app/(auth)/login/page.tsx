@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { 
   Mail, 
@@ -33,6 +33,16 @@ function AuthContent() {
 
   // Interactive Live Showcase State
   const [activeHookIndex, setActiveHookIndex] = useState(0);
+
+  const supabase = createClient();
+
+  useEffect(() => {
+    if (searchParams.get('disabled') === 'true') {
+      supabase.auth.signOut().catch(console.error);
+      setError('Your account has been disabled by the administrator.');
+    }
+  }, [searchParams, supabase.auth]);
+  
   const showcaseHooks = [
     'Most founders post on LinkedIn to be visible. Top 1% founders post to build pipeline.',
     'I audited 142 viral B2B LinkedIn posts. Every single winner had this exact structure.',
@@ -40,7 +50,6 @@ function AuthContent() {
   ];
 
   const router = useRouter();
-  const supabase = createClient();
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();

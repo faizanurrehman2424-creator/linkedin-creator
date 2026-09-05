@@ -150,6 +150,33 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const handleStatusToggle = async (userId: string, isActive: boolean) => {
+    setProcessingId(userId);
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'PATCH',
+        headers: getAdminHeaders(),
+        body: JSON.stringify({ userId, isActive })
+      });
+
+      if (res.ok) {
+        setUsers(users.map(u => u.id === userId ? { ...u, is_active: isActive } : u));
+        if (selectedUser?.id === userId) {
+          setSelectedUser({ ...selectedUser, is_active: isActive });
+        }
+        showSuccess(`User status updated successfully.`);
+      } else {
+         const data = await res.json();
+         setError(`Error updating user: ${data.error || 'Unknown error'}`);
+      }
+    } catch (e: any) {
+      console.error(e);
+      setError('Failed to update user status');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
   const handlePasswordAction = async (requestId: string, action: 'approve' | 'decline') => {
     setProcessingId(requestId);
     try {
@@ -413,6 +440,7 @@ export default function AdminDashboardPage() {
                     <th>Ideas</th>
                     <th>Images</th>
                     <th>Videos</th>
+                    <th>Status</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -452,6 +480,13 @@ export default function AdminDashboardPage() {
                           checked={user.can_generate_videos}
                           disabled={processingId === user.id}
                           onChange={() => handleToggle(user.id, user, 'can_generate_videos')}
+                        />
+                      </td>
+                      <td>
+                        <ToggleSwitch
+                          checked={user.is_active ?? true}
+                          disabled={processingId === user.id}
+                          onChange={() => handleStatusToggle(user.id, !(user.is_active ?? true))}
                         />
                       </td>
                       <td>

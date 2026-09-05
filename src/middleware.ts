@@ -82,8 +82,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Check if user needs onboarding (no context data set yet)
-  if (user && !isOnboardingRoute && !isAuthRoute) {
+  // Check profile status (active/inactive and onboarding)
+  if (user && !isAuthRoute) {
     try {
       if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
         const { createClient: createServiceClient } = await import('@supabase/supabase-js');
@@ -93,12 +93,25 @@ export async function middleware(request: NextRequest) {
         );
         const { data: profile } = await adminClient
           .from('profiles')
-          .select('headline, target_audience')
+          .select('headline, target_audience, is_active')
           .eq('id', user.id)
           .maybeSingle();
 
+        // Check if account is disabled
+        if (profile && profile.is_active === false) {
+          // Send to login with a query param, let client handle signout if needed
+          const url = request.nextUrl.clone();
+          url.pathname = '/login';
+          url.searchParams.set('disabled', 'true');
+          
+          // We must clear the session cookies to actually log them out
+          const response = NextResponse.redirect(url);
+          response.cookies.delete('sb-' + new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).hostname.split('.')[0] + '-auth-token');
+          return response;
+        }
+
         // If profile exists but has no context, redirect to onboarding
-        if (profile && !profile.headline && !profile.target_audience) {
+        if (profile && !profile.headline && !profile.target_audience && !isOnboardingRoute) {
           const url = request.nextUrl.clone();
           url.pathname = '/onboarding';
           return NextResponse.redirect(url);

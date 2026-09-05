@@ -114,27 +114,13 @@ export function Header() {
 
   if (isAuthPage) {
     return (
-      <header className="glass-card header-container auth-header">
-        <div className="header-content auth-header-content">
-          <Link href="/login" className="brand-logo">
-            <strong>LinkedIn AI Engine</strong>
-          </Link>
-          <div className="header-actions auth-header-actions">
-            {pathname !== '/admin/login' && (
-              <Link 
-                href="/admin/login" 
-                className="admin-access-btn" 
-                title="Administrator Access Portal"
-              >
-                <Shield size={16} />
-                <span>Admin</span>
-              </Link>
-            )}
-            <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
-              {isDark ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
+      <header className="auth-header-minimal">
+        <Link href="/login" className="brand-logo-minimal">
+          <div className="logo-icon-minimal">
+            <Lightbulb size={18} />
           </div>
-        </div>
+          <strong>LinkedIn AI Engine</strong>
+        </Link>
       </header>
     );
   }
@@ -303,21 +289,33 @@ export function Header() {
           border-top: none;
           padding: 0.85rem 2rem;
         }
-        .auth-header {
-          border-bottom: 1px solid var(--color-border);
-          backdrop-filter: blur(16px);
-          -webkit-backdrop-filter: blur(16px);
-        }
-        .auth-header-content {
+        .auth-header-minimal {
+          position: fixed;
+          top: 0; left: 0; right: 0;
+          padding: 1.5rem 2rem;
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          width: 100%;
+          justify-content: flex-start;
+          z-index: 50;
         }
-        .auth-header-actions {
+        .brand-logo-minimal {
           display: flex;
           align-items: center;
-          gap: 0.75rem;
+          gap: 0.6rem;
+          font-size: 1.15rem;
+          color: var(--color-text-primary);
+          text-decoration: none;
+          letter-spacing: -0.02em;
+        }
+        .logo-icon-minimal {
+          background: var(--color-brand);
+          color: white;
+          width: 32px; height: 32px;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
         }
         .admin-access-btn {
           display: inline-flex;

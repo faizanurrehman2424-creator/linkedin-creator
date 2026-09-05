@@ -104,14 +104,13 @@ export default function OnboardingPage() {
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return;
-
+      
       const combinedAudience = postTopics.trim()
         ? `${targetAudience.trim()} | Focus Topics: ${postTopics.trim()}`
         : targetAudience.trim();
 
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (session.access_token) {
+      if (session?.access_token) {
         headers['Authorization'] = `Bearer ${session.access_token}`;
       }
 
