@@ -46,6 +46,16 @@ export default function SettingsPage() {
 
   useEffect(() => {
     loadUserData();
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('linkedin') === 'connected') {
+        toast.success('LinkedIn account connected successfully!');
+        window.history.replaceState({}, '', '/settings');
+      } else if (url.searchParams.get('linkedin_error')) {
+        toast.error(decodeURIComponent(url.searchParams.get('linkedin_error') || 'LinkedIn authorization failed'));
+        window.history.replaceState({}, '', '/settings');
+      }
+    }
   }, []);
 
   async function getHeaders(): Promise<Record<string, string>> {
@@ -164,6 +174,24 @@ export default function SettingsPage() {
     }
     current[index] = val;
     setProfile(prev => prev ? { ...prev, core_pillars: current } : null);
+  };
+
+  const handleConnectLinkedIn = () => {
+    window.location.href = '/api/auth/linkedin/connect';
+  };
+
+  const handleDisconnectLinkedIn = async () => {
+    try {
+      const res = await fetch('/api/auth/linkedin/disconnect', { method: 'POST' });
+      if (res.ok) {
+        setProfile(prev => prev ? { ...prev, linkedin_connected: false } : null);
+        toast.success('LinkedIn account disconnected.');
+      } else {
+        toast.error('Failed to disconnect LinkedIn account.');
+      }
+    } catch {
+      toast.error('Network error while disconnecting.');
+    }
   };
 
   if (loading) {
@@ -428,14 +456,40 @@ export default function SettingsPage() {
           <div className="integration-content">
             <div className="connection-status">
               <div className={`status-dot ${profile?.linkedin_connected ? 'online' : 'offline'}`} />
-              <span>{profile?.linkedin_connected ? 'LinkedIn Account Linked' : 'No LinkedIn Account Linked'}</span>
+              <span style={{ fontWeight: 600 }}>{profile?.linkedin_connected ? 'LinkedIn Account Connected' : 'No LinkedIn Account Connected'}</span>
             </div>
             <p className="text-muted">
-              Connect your LinkedIn profile to publish and schedule drafted posts directly from the Content Studio.
+              Connect your LinkedIn profile to publish and schedule drafted posts directly from the Content Studio with 1-click authorization.
             </p>
-            <button className="btn-primary flex-center linkedin-connect-btn" disabled>
-              <Linkedin size={16} /> {profile?.linkedin_connected ? 'Reconnect Profile' : 'Connect LinkedIn Profile'}
-            </button>
+            {profile?.linkedin_connected ? (
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={handleConnectLinkedIn}
+                  className="btn-secondary flex-center"
+                  style={{ color: '#0a66c2' }}
+                >
+                  <Linkedin size={16} /> Reconnect
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDisconnectLinkedIn}
+                  className="btn-secondary flex-center"
+                  style={{ color: 'var(--color-danger)' }}
+                >
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleConnectLinkedIn}
+                className="btn-primary flex-center linkedin-connect-btn"
+                style={{ background: '#0a66c2', marginTop: '0.5rem' }}
+              >
+                <Linkedin size={16} /> Connect LinkedIn Profile
+              </button>
+            )}
           </div>
         </div>
       </div>

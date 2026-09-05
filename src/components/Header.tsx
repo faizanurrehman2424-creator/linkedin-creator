@@ -102,6 +102,25 @@ export function Header() {
   // Don't render header on admin pages (admin has its own layout)
   if (pathname?.startsWith('/admin')) return null;
 
+  const isAuthPage = pathname === '/login' || pathname === '/signup' || pathname?.startsWith('/set-password');
+
+  if (isAuthPage) {
+    return (
+      <header className="glass-card header-container auth-header">
+        <div className="header-content">
+          <Link href="/login" className="brand-logo">
+            <strong>LinkedIn AI Engine</strong>
+          </Link>
+          <div className="header-actions">
+            <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
+              {isDark ? <Sun size={19} /> : <Moon size={19} />}
+            </button>
+          </div>
+        </div>
+      </header>
+    );
+  }
+
   return (
     <header className="glass-card header-container">
       <div className="header-content">
@@ -110,31 +129,35 @@ export function Header() {
             <strong>LinkedIn AI Engine</strong>
           </Link>
 
-          {/* Desktop Navigation Links */}
-          <nav className="nav-links desktop-nav">
-            <Link 
-              href="/ideas" 
-              className={`nav-link ${isActive('/ideas') ? 'active' : ''}`}
-            >
-              <Lightbulb size={16} />
-              <span>Ideas Studio</span>
-            </Link>
+          {/* Desktop Navigation Links - only when authenticated */}
+          {currentUser && (
+            <nav className="nav-links desktop-nav">
+              <Link 
+                href="/ideas" 
+                className={`nav-link ${isActive('/ideas') ? 'active' : ''}`}
+              >
+                <Lightbulb size={16} />
+                <span>Ideas Studio</span>
+              </Link>
 
-            <Link 
-              href="/calendar" 
-              className={`nav-link ${isActive('/calendar') ? 'active' : ''}`}
-            >
-              <CalendarIcon size={16} />
-              <span>Calendar</span>
-            </Link>
-          </nav>
+              <Link 
+                href="/calendar" 
+                className={`nav-link ${isActive('/calendar') ? 'active' : ''}`}
+              >
+                <CalendarIcon size={16} />
+                <span>Calendar</span>
+              </Link>
+            </nav>
+          )}
         </div>
         
         <div className="header-actions">
-          <div className="timezone-badge">
-            <Clock size={14} />
-            <span>Asia/Karachi</span>
-          </div>
+          {currentUser && (
+            <div className="timezone-badge">
+              <Clock size={14} />
+              <span>Asia/Karachi</span>
+            </div>
+          )}
 
           <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
             {isDark ? <Sun size={19} /> : <Moon size={19} />}

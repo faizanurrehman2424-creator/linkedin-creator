@@ -275,23 +275,30 @@ export async function POST(request: Request) {
           : { apiKey: process.env.GEMINI_API_KEY }
       );
 
+      const userPillars = Array.isArray(profile.core_pillars) && profile.core_pillars.length > 0
+        ? profile.core_pillars.join(', ')
+        : 'Industry Trends, Strategy, Execution';
+
       const prompt = `
-        You are an expert LinkedIn copywriter and ghostwriter for high-performing professionals.
-        Generate 15 high-engagement LinkedIn post ideas for the date: ${targetDate}.
+        You are an elite LinkedIn copywriter and ghostwriter for high-impact executives and creators.
+        Generate 15 high-signal LinkedIn post ideas for the date: ${targetDate}.
         
-        Persona Context:
-        - Full Name: ${profile.full_name || 'Professional'}
-        - Headline: ${profile.headline || 'Industry Expert'}
-        - Target Audience: ${profile.target_audience || 'Professionals'}
-        - Core Pillars: ${profile.core_pillars ? profile.core_pillars.join(', ') : 'Leadership, Innovation, Career'}
-        - Tone of Voice: ${profile.tone_of_voice || 'Professional, insightful, and authentic'}
+        Creator Profile & Niche Grounding:
+        - Full Name: ${profile.full_name || 'Creator'}
+        - Headline: ${profile.headline || 'Industry Specialist'}
+        - Target Audience: ${profile.target_audience || 'B2B Executives, Founders, and Leaders'}
+        - Defined Core Topics & Pillars: ${userPillars}
+        - Tone of Voice: ${profile.tone_of_voice || 'Direct, analytical, authoritative, and authentic'}
         
-        Output Rules:
-        1. Exactly 5 posts must be 'industry_trends'
-        2. Exactly 5 posts must be 'recruiter_storytelling'
-        3. Exactly 5 posts must be 'educational_frameworks'
-        4. DO NOT use any emojis anywhere in the text (hooks, body, headline, or hashtags).
-        5. Provide exactly 3 hooks for each post.
+        Distribution Requirements:
+        1. Exactly 5 posts must have pillar 'industry_trends': Analyze emerging market patterns, contrarian shifts, or data relevant to ${userPillars}.
+        2. Exactly 5 posts must have pillar 'recruiter_storytelling': Compelling professional war stories, pivotal mistakes, case studies, or leadership observations in ${userPillars}.
+        3. Exactly 5 posts must have pillar 'educational_frameworks': Actionable, tactical step-by-step systems, checklists, or teardowns for ${profile.target_audience || 'industry professionals'}.
+        
+        Strict Rules:
+        - DO NOT use any emojis anywhere in the output (hooks, body, headline, or hashtags).
+        - Provide exactly 3 high-converting hooks for each post idea.
+        - Ensure post copy provides genuine depth, formatted with readable line breaks.
       `;
 
       const response = await ai.models.generateContent({

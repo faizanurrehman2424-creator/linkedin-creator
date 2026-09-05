@@ -4,7 +4,7 @@ import { useState, useRef } from 'react';
 import {
   X, Wand2, Copy, Image as ImageIcon, Video, Calendar,
   Check, Loader2, Save, Heart, Trash2, Upload, FileVideo,
-  ClipboardCopy
+  ClipboardCopy, Send, ExternalLink, Globe
 } from 'lucide-react';
 import { useToast } from '@/components/Toast';
 
@@ -43,6 +43,8 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
   const [scheduleTime, setScheduleTime] = useState(idea.scheduled_at ? idea.scheduled_at.split('T')[1]?.substring(0, 5) || '09:00' : '09:00');
   const [saving, setSaving] = useState(false);
   const [showSchedulePicker, setShowSchedulePicker] = useState(false);
+  const [publishingLinkedIn, setPublishingLinkedIn] = useState(false);
+  const [publishedUrl, setPublishedUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
@@ -79,24 +81,22 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
     if (!mediaPrompt.trim()) return;
     setGeneratingMedia(true);
     try {
-      const encodedPrompt = encodeURIComponent(mediaPrompt);
-      const url = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1200&height=1200&nologo=true`;
-      const img = new window.Image();
-      img.onload = () => {
-        setMediaUrl(url);
-        setMediaType('image');
-        setGeneratingMedia(false);
-        toast.success('Visual generated successfully.');
-      };
-      img.onerror = () => {
-        setGeneratingMedia(false);
-        toast.error('Image generation failed. Please try again.');
-      };
-      img.src = url;
-    } catch (e) {
+      const res = await fetch('/api/media/generate-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: mediaPrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate visual');
+      
+      setMediaUrl(data.url);
+      setMediaType('image');
+      toast.success('Visual generated successfully.');
+    } catch (e: any) {
       console.error(e);
+      toast.error(e.message || 'Image service error.');
+    } finally {
       setGeneratingMedia(false);
-      toast.error('Image service error.');
     }
   };
 
@@ -104,31 +104,54 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
     if (!mediaPrompt.trim()) return;
     setGeneratingMedia(true);
     try {
-      const res = await fetch('https://api.piapi.ai/api/v1/task', {
+      const res = await fetch('/api/media/generate-video', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': 'sk-6adbb04f5b524a73b205d273f0759cfd'
-        },
-        body: JSON.stringify({
-          model: 'veo3',
-          task_type: 'video_generation',
-          input: { prompt: mediaPrompt }
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: mediaPrompt }),
       });
       const data = await res.json();
-      if (data.data?.output?.video_url) {
-        setMediaUrl(data.data.output.video_url);
+      if (!res.ok) throw new Error(data.error || 'Failed to start video generation');
+
+      if (data.videoUrl) {
+        setMediaUrl(data.videoUrl);
         setMediaType('video');
         toast.success('Video clip generated.');
       } else {
-        toast.info('Video generation submitted. It may take a few moments to complete.');
+        toast.info('Video rendering submitted. Task queued.');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error('Video generation error:', e);
-      toast.error('Video generation failed. The service may be temporarily unavailable.');
+      toast.error(e.message || 'Video generation failed.');
     } finally {
       setGeneratingMedia(false);
+    }
+  };
+
+  const handlePublishLinkedIn = async () => {
+    setPublishingLinkedIn(true);
+    try {
+      const res = await fetch('/api/linkedin/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ideaId: editedIdea.id,
+          hookIndex: editedIdea.selected_hook_index,
+          customText: fullPostText,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to publish post to LinkedIn');
+
+      setPublishedUrl(data.postUrl || 'https://www.linkedin.com/feed/');
+      const updated = { ...editedIdea, status: 'published' };
+      setEditedIdea(updated);
+      onSave(updated);
+      toast.success('Post published live to your LinkedIn profile!');
+    } catch (err: any) {
+      console.error('LinkedIn publishing error:', err);
+      toast.error(err.message || 'Failed to publish to LinkedIn.');
+    } finally {
+      setPublishingLinkedIn(false);
     }
   };
 
@@ -496,15 +519,56 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
               {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
               Save
             </button>
-            <button className="btn-primary flex-center" onClick={() => copyToClipboard(fullPostText, 'publish')}>
+            <button className="btn-secondary flex-center" onClick={() => copyToClipboard(fullPostText, 'publish')}>
               {copied === 'publish' ? <Check size={16} /> : <ClipboardCopy size={16} />}
-              Copy to Publish
+              Copy Post
             </button>
+            {publishedUrl ? (
+              <a
+                href={publishedUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-linkedin flex-center"
+              >
+                <ExternalLink size={15} /> View on LinkedIn
+              </a>
+            ) : (
+              <button
+                className="btn-linkedin flex-center"
+                onClick={handlePublishLinkedIn}
+                disabled={publishingLinkedIn}
+                title={userProfile?.linkedin_connected ? 'Publish live to your LinkedIn profile' : 'Connect LinkedIn in Settings to publish'}
+              >
+                {publishingLinkedIn ? <Loader2 size={15} className="spin" /> : <Send size={15} />}
+                Publish to LinkedIn
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       <style jsx>{`
+        .btn-linkedin {
+          background: #0a66c2;
+          color: #ffffff;
+          padding: 0.55rem 1.15rem;
+          border-radius: var(--radius-md);
+          font-weight: 600;
+          font-size: 0.875rem;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          box-shadow: 0 2px 8px rgba(10, 102, 194, 0.3);
+          transition: all 0.18s;
+        }
+        .btn-linkedin:hover:not(:disabled) {
+          background: #004182;
+          transform: translateY(-1px);
+        }
+        .btn-linkedin:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
         .modal-overlay {
           position: fixed;
           top: 0; left: 0; right: 0; bottom: 0;

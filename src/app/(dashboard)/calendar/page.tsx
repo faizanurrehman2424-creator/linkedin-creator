@@ -4,10 +4,13 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Loader2, ChevronLeft, ChevronRight, Download } from 'lucide-react';
 import { useToast } from '@/components/Toast';
+import { PostStudioModal } from '@/components/PostStudioModal';
 
 export default function CalendarPage() {
   const [ideas, setIdeas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPost, setSelectedPost] = useState<any | null>(null);
+  const [userProfile, setUserProfile] = useState<any | null>(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const supabase = createClient();
   const toast = useToast();
@@ -23,10 +26,25 @@ export default function CalendarPage() {
       if (!error && data) {
         setIdeas(data);
       }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: prof } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        if (prof) setUserProfile(prof);
+      }
       setLoading(false);
     };
     fetchScheduled();
   }, []);
+
+  const handlePostUpdate = (updatedPost: any) => {
+    setIdeas(prev => prev.map(p => p.id === updatedPost.id ? updatedPost : p));
+    setSelectedPost(null);
+  };
 
   const getDaysInMonth = (date: Date) => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
@@ -115,8 +133,14 @@ export default function CalendarPage() {
               <span className="date-number">{date.getDate()}</span>
               <div className="cell-posts">
                 {posts.map(post => (
-                  <div key={post.id} className={`post-badge ${post.status}`}>
-                    {post.pillar.replace('_', ' ')}
+                  <div 
+                    key={post.id} 
+                    className={`post-badge ${post.status}`}
+                    onClick={() => setSelectedPost(post)}
+                    title="Click to inspect and edit post"
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {post.pillar ? post.pillar.replace('_', ' ') : 'Post'}
                   </div>
                 ))}
               </div>
@@ -124,6 +148,15 @@ export default function CalendarPage() {
           );
         })}
       </div>
+
+      {selectedPost && (
+        <PostStudioModal
+          idea={selectedPost}
+          userProfile={userProfile}
+          onClose={() => setSelectedPost(null)}
+          onSave={handlePostUpdate}
+        />
+      )}
 
       <style jsx>{`
         .page-container {

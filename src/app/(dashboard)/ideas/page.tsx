@@ -159,6 +159,10 @@ export default function IdeasPage() {
     }
   };
 
+  const handleHookSelect = (ideaId: string, hookIdx: number) => {
+    setIdeas(prev => prev.map(i => i.id === ideaId ? { ...i, selected_hook_index: hookIdx } : i));
+  };
+
   const handleSaveFromStudio = async (updatedIdea: any) => {
     const { error } = await supabase
       .from('content_ideas')
@@ -337,9 +341,23 @@ export default function IdeasPage() {
               <div className="card-body" onClick={() => setSelectedIdea(idea)}>
                 <h3 className="idea-headline">{idea.headline}</h3>
                 <p className="idea-hook">
-                  {idea.hook_options?.[idea.selected_hook_index || 0]?.substring(0, 120)}
-                  {idea.hook_options?.[idea.selected_hook_index || 0]?.length > 120 ? '...' : ''}
+                  {idea.hook_options?.[idea.selected_hook_index || 0]?.substring(0, 140)}
+                  {idea.hook_options?.[idea.selected_hook_index || 0]?.length > 140 ? '...' : ''}
                 </p>
+                {idea.hook_options && idea.hook_options.length > 1 && (
+                  <div className="hook-pill-row" onClick={(e) => e.stopPropagation()}>
+                    <span className="hook-pill-label">Hook:</span>
+                    {idea.hook_options.map((_: any, idx: number) => (
+                      <button
+                        key={idx}
+                        className={`hook-mini-pill ${(idea.selected_hook_index || 0) === idx ? 'active' : ''}`}
+                        onClick={() => handleHookSelect(idea.id, idx)}
+                      >
+                        {idx + 1}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="card-footer">
@@ -574,6 +592,36 @@ export default function IdeasPage() {
           .generate-btn { width: 100%; }
           .tabs-bar { gap: 0.25rem; }
           .tab-btn { padding: 0.4rem 0.75rem; font-size: 0.8rem; }
+        }
+        .hook-pill-row {
+          display: flex;
+          align-items: center;
+          gap: 0.35rem;
+          margin-top: 0.5rem;
+        }
+        .hook-pill-label {
+          font-size: 0.72rem;
+          color: var(--color-text-muted);
+          font-weight: 500;
+        }
+        .hook-mini-pill {
+          padding: 0.15rem 0.45rem;
+          border-radius: 4px;
+          font-size: 0.72rem;
+          font-weight: 600;
+          color: var(--color-text-secondary);
+          background: rgba(148, 163, 184, 0.08);
+          border: 1px solid var(--color-border);
+          transition: all 0.15s;
+        }
+        .hook-mini-pill:hover {
+          border-color: var(--color-brand);
+          color: var(--color-brand);
+        }
+        .hook-mini-pill.active {
+          background: var(--color-brand);
+          color: #ffffff;
+          border-color: var(--color-brand);
         }
       `}</style>
     </div>
