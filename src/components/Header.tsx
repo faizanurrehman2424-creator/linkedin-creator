@@ -129,16 +129,18 @@ export function Header() {
   if (isAuthPage) {
     return (
       <header className="auth-header-minimal">
-        <Link href="/login" className="brand-logo-lockup">
-          <div className="logo-icon-box">
-            <span className="logo-in">in</span>
-            <div className="logo-spark" />
-          </div>
-          <div className="logo-text-group">
-            <span className="logo-brand-title">LINKEDIN</span>
-            <span className="logo-brand-badge">AI ENGINE</span>
-          </div>
-        </Link>
+        <div className="auth-header-inner">
+          <Link href="/login" className="brand-logo-lockup">
+            <div className="logo-icon-box">
+              <span className="logo-in">in</span>
+              <div className="logo-spark" />
+            </div>
+            <div className="logo-text-group">
+              <span className="logo-brand-title">LINKEDIN</span>
+              <span className="logo-brand-badge">AI ENGINE</span>
+            </div>
+          </Link>
+        </div>
       </header>
     );
   }

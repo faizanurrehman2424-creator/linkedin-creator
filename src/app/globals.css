@@ -397,3 +397,114 @@ button:active {
     padding: 1.5rem 1rem;
   }
 }
+
+/* Brand Logo Lockup & Auth Header */
+.auth-header-minimal {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 0.85rem 2rem;
+  display: flex;
+  align-items: center;
+  z-index: 50;
+  background: var(--color-surface-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.auth-header-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.brand-logo-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.logo-icon-box {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #0a66c2 0%, #004182 100%);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(10, 102, 194, 0.35);
+  position: relative;
+  flex-shrink: 0;
+}
+
+.logo-icon-box.sm {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+}
+
+.logo-in {
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 1.15rem;
+  font-family: var(--font-outfit), sans-serif;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.logo-in.sm {
+  font-size: 0.95rem;
+}
+
+.logo-spark {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 6px #38bdf8;
+}
+
+.logo-text-group {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  white-space: nowrap;
+}
+
+.logo-brand-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--color-text-primary);
+}
+
+.logo-brand-title.sm {
+  font-size: 1.05rem;
+}
+
+.logo-brand-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--color-brand);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.logo-brand-badge.sm {
+  font-size: 0.6rem;
+  padding: 0.1rem 0.35rem;
+}
+
