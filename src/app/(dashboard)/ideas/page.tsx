@@ -59,11 +59,40 @@ export default function IdeasPage() {
   const supabase = createClient();
   const toast = useToast();
 
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const headers: Record<string, string> = {};
+    try {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        await new Promise(r => setTimeout(r, 100));
+        const retry = await supabase.auth.getSession();
+        session = retry.data.session;
+      }
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.error('Session retrieval error:', e);
+    }
+    return headers;
+  };
+
   useEffect(() => {
     fetchIdeas();
     fetchProfile();
     fetchSystemStatus();
     setSelectedIdeaIds([]);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        fetchIdeas();
+        fetchProfile();
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [activeTab, selectedDate]);
 
   const fetchSystemStatus = async () => {
@@ -82,11 +111,7 @@ export default function IdeasPage() {
 
   const fetchProfile = async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: Record<string, string> = {};
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
+      const headers = await getAuthHeaders();
       const res = await fetch('/api/profile', { headers });
       if (res.ok) {
         const data = await res.json();
@@ -108,26 +133,26 @@ export default function IdeasPage() {
 
   const fetchIdeas = async () => {
     setLoading(true);
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setLoading(false); return; }
+    try {
+      const headers = await getAuthHeaders();
+      const params = new URLSearchParams({ status: activeTab });
+      if (activeTab === 'fresh') params.set('targetDate', selectedDate);
 
-    let query = supabase
-      .from('content_ideas')
-      .select('*')
-      .eq('user_id', user.id)
-      .eq('status', activeTab)
-      .order('created_at', { ascending: false });
-
-    // For fresh, filter by date
-    if (activeTab === 'fresh') {
-      query = query.eq('target_date', selectedDate);
+      const res = await fetch(`/api/ideas?${params.toString()}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setIdeas(data.ideas || []);
+      } else {
+        const err = await res.text();
+        console.error('fetchIdeas failed:', err);
+        setIdeas([]);
+      }
+    } catch (e) {
+      console.error('fetchIdeas error:', e);
+      setIdeas([]);
+    } finally {
+      setLoading(false);
     }
-
-    const { data, error } = await query;
-    if (!error && data) {
-      setIdeas(data);
-    }
-    setLoading(false);
   };
 
   const handleGenerate = async () => {
@@ -142,11 +167,8 @@ export default function IdeasPage() {
 
     setGenerating(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
+      const authHeaders = await getAuthHeaders();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeaders };
 
       const res = await fetch('/api/ideas/generate-daily', {
         method: 'POST',
@@ -172,20 +194,20 @@ export default function IdeasPage() {
   const handleStatusChange = async (ideaId: string, newStatus: string) => {
     setActionLoading(ideaId);
     try {
-      const updateData: any = { status: newStatus };
-      if (newStatus === 'trashed') {
-        updateData.trashed_at = new Date().toISOString();
-      }
-      if (newStatus === 'liked') {
-        updateData.trashed_at = null;
-      }
+      const authHeaders = await getAuthHeaders();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeaders };
 
-      const { error } = await supabase
-        .from('content_ideas')
-        .update(updateData)
-        .eq('id', ideaId);
+      const updates: any = { status: newStatus };
+      if (newStatus === 'trashed') updates.trashed_at = new Date().toISOString();
+      if (newStatus === 'liked') updates.trashed_at = null;
 
-      if (!error) {
+      const res = await fetch('/api/ideas', {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ ideaId, updates }),
+      });
+
+      if (res.ok) {
         setIdeas(ideas.filter(i => i.id !== ideaId));
         setSelectedIdeaIds(prev => prev.filter(id => id !== ideaId));
         toast.success(newStatus === 'liked' ? 'Saved to Liked Ideas.' : newStatus === 'trashed' ? 'Moved to Trash.' : 'Status updated.');
@@ -228,12 +250,9 @@ export default function IdeasPage() {
   const handlePermanentDelete = async (ideaId: string) => {
     setActionLoading(ideaId);
     try {
-      const { error } = await supabase
-        .from('content_ideas')
-        .delete()
-        .eq('id', ideaId);
-
-      if (!error) {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/ideas?ideaId=${ideaId}`, { method: 'DELETE', headers });
+      if (res.ok) {
         setIdeas(ideas.filter(i => i.id !== ideaId));
         setSelectedIdeaIds(prev => prev.filter(id => id !== ideaId));
         toast.success('Idea permanently deleted.');
@@ -264,16 +283,24 @@ export default function IdeasPage() {
     }
   };
 
+  const bulkPatch = async (updates: any) => {
+    const authHeaders = await getAuthHeaders();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeaders };
+    // Send each update sequentially (or we can batch via a dedicated endpoint later)
+    const results = await Promise.all(
+      selectedIdeaIds.map(ideaId =>
+        fetch('/api/ideas', { method: 'PATCH', headers, body: JSON.stringify({ ideaId, updates }) })
+      )
+    );
+    return results.every(r => r.ok);
+  };
+
   const handleBulkTrash = async () => {
     if (selectedIdeaIds.length === 0) return;
     setBulkProcessing(true);
     try {
-      const { error } = await supabase
-        .from('content_ideas')
-        .update({ status: 'trashed', trashed_at: new Date().toISOString() })
-        .in('id', selectedIdeaIds);
-
-      if (!error) {
+      const ok = await bulkPatch({ status: 'trashed', trashed_at: new Date().toISOString() });
+      if (ok) {
         setIdeas(ideas.filter(i => !selectedIdeaIds.includes(i.id)));
         toast.success(`Moved ${selectedIdeaIds.length} ideas to Trash.`);
         setSelectedIdeaIds([]);
@@ -291,12 +318,8 @@ export default function IdeasPage() {
     if (selectedIdeaIds.length === 0) return;
     setBulkProcessing(true);
     try {
-      const { error } = await supabase
-        .from('content_ideas')
-        .update({ status: 'liked', trashed_at: null })
-        .in('id', selectedIdeaIds);
-
-      if (!error) {
+      const ok = await bulkPatch({ status: 'liked', trashed_at: null });
+      if (ok) {
         setIdeas(ideas.filter(i => !selectedIdeaIds.includes(i.id)));
         toast.success(`Saved ${selectedIdeaIds.length} ideas to Liked.`);
         setSelectedIdeaIds([]);
@@ -314,12 +337,8 @@ export default function IdeasPage() {
     if (selectedIdeaIds.length === 0) return;
     setBulkProcessing(true);
     try {
-      const { error } = await supabase
-        .from('content_ideas')
-        .update({ status: 'fresh', trashed_at: null })
-        .in('id', selectedIdeaIds);
-
-      if (!error) {
+      const ok = await bulkPatch({ status: 'fresh', trashed_at: null });
+      if (ok) {
         setIdeas(ideas.filter(i => !selectedIdeaIds.includes(i.id)));
         toast.success(`Restored ${selectedIdeaIds.length} ideas.`);
         setSelectedIdeaIds([]);
@@ -337,12 +356,9 @@ export default function IdeasPage() {
     if (selectedIdeaIds.length === 0) return;
     setBulkProcessing(true);
     try {
-      const { error } = await supabase
-        .from('content_ideas')
-        .delete()
-        .in('id', selectedIdeaIds);
-
-      if (!error) {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`/api/ideas?ideaIds=${selectedIdeaIds.join(',')}`, { method: 'DELETE', headers });
+      if (res.ok) {
         setIdeas(ideas.filter(i => !selectedIdeaIds.includes(i.id)));
         toast.success(`Permanently deleted ${selectedIdeaIds.length} ideas.`);
         setSelectedIdeaIds([]);
@@ -364,11 +380,8 @@ export default function IdeasPage() {
         ? `${contextAudience.trim()} | Topics: ${contextTopics.trim()}`
         : contextAudience.trim();
 
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (session?.access_token) {
-        headers['Authorization'] = `Bearer ${session.access_token}`;
-      }
+      const authHeaders = await getAuthHeaders();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeaders };
 
       const res = await fetch('/api/profile', {
         method: 'PUT',
@@ -401,23 +414,34 @@ export default function IdeasPage() {
   };
 
   const handleSaveFromStudio = async (updatedIdea: any) => {
-    const { error } = await supabase
-      .from('content_ideas')
-      .update({
-        hook_options: updatedIdea.hook_options,
-        selected_hook_index: updatedIdea.selected_hook_index,
-        caption_body: updatedIdea.caption_body,
-        hashtags: updatedIdea.hashtags,
-        notes: updatedIdea.notes,
-        media_url: updatedIdea.media_url,
-        media_type: updatedIdea.media_type,
-      })
-      .eq('id', updatedIdea.id);
+    try {
+      const authHeaders = await getAuthHeaders();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeaders };
 
-    if (!error) {
-      setIdeas(ideas.map(i => i.id === updatedIdea.id ? { ...i, ...updatedIdea } : i));
-      toast.success('Post changes saved successfully.');
-    } else {
+      const res = await fetch('/api/ideas', {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          ideaId: updatedIdea.id,
+          updates: {
+            hook_options: updatedIdea.hook_options,
+            selected_hook_index: updatedIdea.selected_hook_index,
+            caption_body: updatedIdea.caption_body,
+            hashtags: updatedIdea.hashtags,
+            notes: updatedIdea.notes,
+            media_url: updatedIdea.media_url,
+            media_type: updatedIdea.media_type,
+          }
+        }),
+      });
+
+      if (res.ok) {
+        setIdeas(ideas.map(i => i.id === updatedIdea.id ? { ...i, ...updatedIdea } : i));
+        toast.success('Post changes saved successfully.');
+      } else {
+        toast.error('Failed to save post changes.');
+      }
+    } catch (e) {
       toast.error('Failed to save post changes.');
     }
     setSelectedIdea(null);

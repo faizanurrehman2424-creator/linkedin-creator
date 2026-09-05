@@ -15,38 +15,55 @@ export default function CalendarPage() {
   const supabase = createClient();
   const toast = useToast();
 
-  useEffect(() => {
-    const fetchScheduled = async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('content_ideas')
-        .select('*')
-        .in('status', ['scheduled', 'published']);
-        
-      if (!error && data) {
-        setIdeas(data);
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const headers: Record<string, string> = {};
+    try {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        await new Promise(r => setTimeout(r, 100));
+        const retry = await supabase.auth.getSession();
+        session = retry.data.session;
+      }
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.error('Session retrieval error:', e);
+    }
+    return headers;
+  };
+
+  const fetchScheduled = async () => {
+    setLoading(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch('/api/ideas?status=scheduled,published', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setIdeas(data.ideas || []);
       }
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        try {
-          const headers: Record<string, string> = {};
-          if (session.access_token) {
-            headers['Authorization'] = `Bearer ${session.access_token}`;
-          }
-          const pRes = await fetch('/api/profile', { headers });
-          if (pRes.ok) {
-            const pData = await pRes.json();
-            const prof = pData.profile || pData;
-            if (prof) setUserProfile(prof);
-          }
-        } catch (e) {
-          console.error('Calendar profile fetch error:', e);
-        }
+      const pRes = await fetch('/api/profile', { headers });
+      if (pRes.ok) {
+        const pData = await pRes.json();
+        const prof = pData.profile || pData;
+        if (prof) setUserProfile(prof);
       }
+    } catch (e) {
+      console.error('Calendar fetch error:', e);
+    } finally {
       setLoading(false);
-    };
+    }
+  };
+
+  useEffect(() => {
     fetchScheduled();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) fetchScheduled();
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const handlePostUpdate = (updatedPost: any) => {

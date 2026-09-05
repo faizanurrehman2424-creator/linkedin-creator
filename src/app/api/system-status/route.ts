@@ -6,6 +6,10 @@ export async function GET() {
     const toggles = await getMasterToggles();
     return NextResponse.json({
       success: true,
+      idea_gen: toggles.idea_gen,
+      image_gen: toggles.image_gen,
+      video_gen: toggles.video_gen,
+      apify: toggles.apify,
       features: toggles,
     });
   } catch (err: any) {

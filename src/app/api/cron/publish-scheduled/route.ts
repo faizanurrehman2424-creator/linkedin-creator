@@ -126,3 +126,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message || 'Scheduled publishing cron failed' }, { status: 500 });
   }
 }
+
+export async function POST(request: Request) {
+  return GET(request);
+}

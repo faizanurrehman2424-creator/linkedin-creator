@@ -1,24 +1,36 @@
 import { NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const adminSupabase = await createAdminClient();
+    let userId: string | null = null;
 
-    if (!user) {
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const { data: { user } } = await adminSupabase.auth.getUser(token);
+      if (user) userId = user.id;
+    }
+
+    if (!userId) {
+      const supabase = await createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) userId = user.id;
+    }
+
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const supabaseAdmin = await createAdminClient();
-    const { error: updateError } = await supabaseAdmin
+    const { error: updateError } = await adminSupabase
       .from('profiles')
       .update({
         linkedin_connected: false,
         linkedin_access_token: null,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', user.id);
+      .eq('id', userId);
 
     if (updateError) throw updateError;
 

@@ -7,6 +7,7 @@ import {
   ClipboardCopy, Send, ExternalLink, Globe
 } from 'lucide-react';
 import { useToast } from '@/components/Toast';
+import { createClient } from '@/lib/supabase/client';
 
 interface Idea {
   id: string;
@@ -49,6 +50,20 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
   const [masterVideoGen, setMasterVideoGen] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
+  const supabase = createClient();
+
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const headers: Record<string, string> = {};
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+    } catch (e) {
+      console.error('Session retrieval error:', e);
+    }
+    return headers;
+  };
 
   useEffect(() => {
     async function fetchSystemToggles() {
@@ -70,9 +85,10 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
     if (!refinePrompt.trim()) return;
     setRefining(field);
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/ideas/refine-field', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ fieldToRefine: field, currentText, userPrompt: refinePrompt })
       });
       const data = await res.json();
@@ -99,9 +115,10 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
     if (!mediaPrompt.trim()) return;
     setGeneratingMedia(true);
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/media/generate-image', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ prompt: mediaPrompt }),
       });
       const data = await res.json();
@@ -122,9 +139,10 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
     if (!mediaPrompt.trim()) return;
     setGeneratingMedia(true);
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/media/generate-video', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ prompt: mediaPrompt }),
       });
       const data = await res.json();
@@ -138,7 +156,7 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
         toast.info('Video rendering submitted. Task queued.');
       }
     } catch (e: any) {
-      console.error('Video generation error:', e);
+      console.error(e);
       toast.error(e.message || 'Video generation failed.');
     } finally {
       setGeneratingMedia(false);
@@ -148,9 +166,10 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
   const handlePublishLinkedIn = async () => {
     setPublishingLinkedIn(true);
     try {
+      const authHeaders = await getAuthHeaders();
       const res = await fetch('/api/linkedin/publish', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({
           ideaId: editedIdea.id,
           hookIndex: editedIdea.selected_hook_index,
@@ -179,11 +198,13 @@ export function PostStudioModal({ idea, userProfile, onClose, onSave }: {
     setUploading(true);
 
     try {
+      const authHeaders = await getAuthHeaders();
       const formData = new FormData();
       formData.append('file', file);
 
       const res = await fetch('/api/upload', {
         method: 'POST',
+        headers: { ...authHeaders },
         body: formData,
       });
 

@@ -1,12 +1,24 @@
 import { NextResponse } from 'next/server';
-import { createClient as createServerClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const supabase = await createClient();
+    const adminSupabase = await createAdminClient();
 
-    if (!user) {
+    // Resolve user
+    let userId: string | null = null;
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const { data: { user } } = await supabase.auth.getUser(token);
+      if (user) userId = user.id;
+    }
+    if (!userId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) userId = user.id;
+    }
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -16,12 +28,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Idea ID is required' }, { status: 400 });
     }
 
-    // Check if the idea is trashed and within 24h window
-    const { data: idea, error: fetchError } = await supabase
+    // Fetch the trashed idea via admin client to bypass RLS
+    const { data: idea, error: fetchError } = await adminSupabase
       .from('content_ideas')
       .select('*')
       .eq('id', ideaId)
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('status', 'trashed')
       .single();
 
@@ -40,14 +52,15 @@ export async function POST(request: Request) {
       }
     }
 
-    // Restore to fresh status
-    const { error: updateError } = await supabase
+    // Restore to fresh status via admin client
+    const { error: updateError } = await adminSupabase
       .from('content_ideas')
       .update({
         status: 'fresh',
         trashed_at: null,
       })
-      .eq('id', ideaId);
+      .eq('id', ideaId)
+      .eq('user_id', userId);
 
     if (updateError) throw updateError;
 

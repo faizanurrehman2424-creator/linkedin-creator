@@ -25,7 +25,7 @@ export async function GET(request: Request) {
         status,
         created_at,
         resolved_at,
-        profiles (
+        profiles!password_reset_requests_user_id_fkey (
           full_name,
           role
         )

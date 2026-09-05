@@ -3,8 +3,22 @@ import { createClient as createServerClient } from '@/lib/supabase/server';
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createServerClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { createAdminClient } = await import('@/lib/supabase/server');
+    const adminSupabase = await createAdminClient();
+    let user: any = null;
+
+    const authHeader = request.headers.get('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+      const { data: { user: tokenUser } } = await adminSupabase.auth.getUser(token);
+      if (tokenUser) user = tokenUser;
+    }
+
+    if (!user) {
+      const supabase = await createServerClient();
+      const { data: { user: cookieUser } } = await supabase.auth.getUser();
+      if (cookieUser) user = cookieUser;
+    }
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
